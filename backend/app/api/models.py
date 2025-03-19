@@ -2,15 +2,16 @@ from pydantic import BaseModel, Field
 from typing import Dict, List, Optional, Union, Any
 
 
+class IncomeItem(BaseModel):
+    amount: float = Field(..., description="Income amount in GBP")
+    type: str = Field(..., description="Type of income (employment_income, self_employment_income, etc.)")
+
+
 class WageGrowthRequest(BaseModel):
-    income: float = Field(..., description="Current annual income in GBP (2025)")
+    incomes: List[IncomeItem] = Field(..., description="List of income items with amounts and types")
     wage_growth: Dict[str, float] = Field(
         default_factory=lambda: {"2026": 0.02, "2027": 0.02, "2028": 0.02, "2029": 0.02},
         description="Annual wage growth rate for future years (e.g., {'2026': 0.02, '2027': 0.02, '2028': 0.02, '2029': 0.02} for 2% growth)"
-    )
-    income_types: Dict[str, float] = Field(
-        default_factory=lambda: {"employment_income": 1.0},
-        description="Proportion of income by type (should sum to 1.0)"
     )
 
 

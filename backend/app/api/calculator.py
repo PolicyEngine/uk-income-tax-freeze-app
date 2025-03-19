@@ -1,6 +1,6 @@
-from policyengine_uk import Simulation, CountryTaxBenefitSystem
+from policyengine_uk import Simulation, CountryTaxBenefitSystem, Microsimulation
 from policyengine_core.reforms import Reform
-from typing import Dict, List, Union, Tuple
+from typing import Dict, List, Union, Tuple, Any
 import pandas as pd
 import numpy as np
 
@@ -42,6 +42,7 @@ reform_system = Reform.from_dict(FREEZE_REFORM)(CountryTaxBenefitSystem())
 
 VARIABLES = [
     "person_id",
+    "household_id",
     "employment_income",
     "self_employment_income",
     "state_pension",
@@ -56,6 +57,21 @@ VARIABLES = [
     "household_net_income",
 ]
 
+baseline_microsimulation = Microsimulation(tax_benefit_system=baseline_system, dataset="hf://policyengine/policyengine-uk-data/enhanced_frs_2022_23.h5")
+reform_microsimulation = Microsimulation(tax_benefit_system=reform_system, dataset="hf://policyengine/policyengine-uk-data/enhanced_frs_2022_23.h5")
+
+baseline_population_df_2028 = baseline_microsimulation.calculate_dataframe(VARIABLES[1:], 2028)
+selected_households = np.random.choice(baseline_population_df_2028.household_id, 100, replace=False, p=baseline_population_df_2028.household_weight.values / baseline_population_df_2028.household_weight.sum())
+reform_population_df_2028 = reform_microsimulation.calculate_dataframe(VARIABLES[1:], 2028)
+
+baseline_population_df_2029 = baseline_microsimulation.calculate_dataframe(VARIABLES[1:], 2029)
+reform_population_df_2029 = reform_microsimulation.calculate_dataframe(VARIABLES[1:], 2029)
+
+baseline_population_df_2028 = baseline_population_df_2028[baseline_population_df_2028.household_id.isin(selected_households)]
+reform_population_df_2028 = reform_population_df_2028[reform_population_df_2028.household_id.isin(selected_households)]
+baseline_population_df_2029 = baseline_population_df_2029[baseline_population_df_2029.household_id.isin(selected_households)]
+reform_population_df_2029 = reform_population_df_2029[reform_population_df_2029.household_id.isin(selected_households)]
+
 
 def calculate_household_df(household: dict, year: int, freeze_thresholds: bool = False) -> pd.DataFrame:
     """
@@ -64,22 +80,22 @@ def calculate_household_df(household: dict, year: int, freeze_thresholds: bool =
     """
     simulation = Simulation(situation=household, tax_benefit_system=reform_system if freeze_thresholds else baseline_system)
     
-    return simulation.calculate_dataframe(VARIABLES, year)
+    result = simulation.calculate_dataframe(VARIABLES, year)
+
+    return result
 
 
 def build_household(
-    income: float, 
+    incomes: List[Dict[str, Union[float, str]]], 
     year: int, 
-    income_types: Dict[str, float],
     wage_growth: Dict[str, float]
 ) -> dict:
     """
     Create a household dictionary for PolicyEngine simulation.
     
     Args:
-        income: Base income amount (2025)
+        incomes: List of income items with amount and type
         year: The simulation year
-        income_types: Dictionary mapping income types to proportions
         wage_growth: Dictionary mapping years to growth rates
         
     Returns:
@@ -87,35 +103,42 @@ def build_household(
     """
     # Apply wage growth to income for years after the base year (2025)
     base_year = 2025
-    adjusted_income = income
     
-    # Apply compounding growth for each year after 2025
-    for growth_year in range(base_year + 1, year + 1):
-        growth_rate = wage_growth.get(str(growth_year), OBR_EARNINGS_GROWTH.get(str(growth_year), 0.02))
-        adjusted_income *= (1 + growth_rate)
-    
-    # Create person with distributed income sources
+    # Create person with multiple income sources
     person = {"age": 40}
     
-    for income_type, proportion in income_types.items():
-        if proportion > 0:
-            person[income_type] = adjusted_income * proportion
+    for income_item in incomes:
+        income_type = income_item["type"]
+        base_amount = income_item["amount"]
+        
+        # Apply compounding growth for each year after 2025
+        adjusted_amount = base_amount
+        for growth_year in range(base_year + 1, year + 1):
+            if not wage_growth:  # Empty dict = use OBR projections
+                growth_rate = OBR_EARNINGS_GROWTH.get(str(growth_year), 0.02)
+            else:
+                growth_rate = wage_growth.get(str(growth_year), OBR_EARNINGS_GROWTH.get(str(growth_year), 0.02))
+            adjusted_amount *= (1 + growth_rate)
+        
+        # Add or increment the income value in the person dict
+        if income_type in person:
+            person[income_type] += adjusted_amount
+        else:
+            person[income_type] = adjusted_amount
     
     return {"people": {"person": person}}
 
 
 def calculate_impact_over_years(
-    income: float,
-    wage_growth: Dict[str, float],
-    income_types: Dict[str, float]
+    incomes: List[Dict[str, Union[float, str]]],
+    wage_growth: Dict[str, float]
 ) -> Dict[str, Dict[int, float]]:
     """
     Calculate the impact of extending the income tax threshold freeze to 2028/29 and 2029/30.
     
     Args:
-        income: Base income (2025)
+        incomes: List of income items with amount and type
         wage_growth: Dictionary of wage growth rates by year
-        income_types: Dictionary of income type proportions
         
     Returns:
         Dictionary with results for both policy scenarios
@@ -126,7 +149,7 @@ def calculate_impact_over_years(
     # Only calculate for years 2025 through 2029
     for year in range(2025, 2030):
         # Create household for this year
-        household = build_household(income, year, income_types, wage_growth)
+        household = build_household(incomes, year, wage_growth)
         
         # Calculate with freeze extension
         with_freeze_df = calculate_household_df(household, year, freeze_thresholds=True)

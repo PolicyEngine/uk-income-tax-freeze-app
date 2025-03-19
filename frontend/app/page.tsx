@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Container, 
   Title, 
@@ -25,53 +25,73 @@ import {
   Table,
   Tooltip,
   Switch,
+  ActionIcon,
+  Modal,
+  Select,
 } from '@mantine/core';
+import { IconPlus, IconTrash } from '@tabler/icons-react';
 import axios from 'axios';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { colors } from './styles/colors';
 
 type IncomeType = 'employment_income' | 'self_employment_income' | 'pension_income' | 'dividend_income';
 
+type IncomeItem = {
+  id: string;
+  amount: number;
+  type: IncomeType;
+};
+
+const INCOME_TYPE_LABELS: Record<IncomeType, string> = {
+  'employment_income': 'Employment',
+  'self_employment_income': 'Self-Employment',
+  'pension_income': 'Pension',
+  'dividend_income': 'Dividends'
+};
+
 export default function Home() {
-  const [income, setIncome] = useState(30000);
+  const [incomes, setIncomes] = useState<IncomeItem[]>([
+    { id: '1', amount: 30000, type: 'employment_income' }
+  ]);
   const [wageGrowth2026, setWageGrowth2026] = useState(2);
   const [wageGrowth2027, setWageGrowth2027] = useState(2);
   const [wageGrowth2028, setWageGrowth2028] = useState(2);
   const [wageGrowth2029, setWageGrowth2029] = useState(2);
-  const [incomeType, setIncomeType] = useState<IncomeType>('employment_income');
   const [results, setResults] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [useOBRGrowth, setUseOBRGrowth] = useState(true);
+  const [addIncomeModalOpen, setAddIncomeModalOpen] = useState(false);
+  const [newIncomeAmount, setNewIncomeAmount] = useState(0);
+  const [newIncomeType, setNewIncomeType] = useState<IncomeType>('employment_income');
   
   const calculateImpact = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      // Create income types distribution (all income in selected type)
-      const incomeTypes: Record<string, number> = {};
-      incomeTypes[incomeType] = 1.0;
-      
       const response = await axios.post('/api/calculate', { 
-        income,
+        incomes: incomes.map(income => ({
+          amount: income.amount,
+          type: income.type
+        })),
         wage_growth: useOBRGrowth ? {} : {
           "2026": wageGrowth2026 / 100,
           "2027": wageGrowth2027 / 100,
           "2028": wageGrowth2028 / 100,
           "2029": wageGrowth2029 / 100
-        },
-        income_types: incomeTypes
+        }
       });
       
       setResults(response.data);
 
       // If using OBR projections, update the displayed growth values
       if (useOBRGrowth && response.data.assumptions.obr_earnings_growth) {
-        setWageGrowth2026(Number(response.data.assumptions.obr_earnings_growth["2026"]) * 100);
-        setWageGrowth2027(Number(response.data.assumptions.obr_earnings_growth["2027"]) * 100);
-        setWageGrowth2028(Number(response.data.assumptions.obr_earnings_growth["2028"]) * 100);
-        setWageGrowth2029(Number(response.data.assumptions.obr_earnings_growth["2029"]) * 100);
+        const obrData = response.data.assumptions.obr_earnings_growth;
+        setWageGrowth2026(parseFloat((obrData["2026"] * 100).toFixed(2)));
+        setWageGrowth2027(parseFloat((obrData["2027"] * 100).toFixed(2)));
+        setWageGrowth2028(parseFloat((obrData["2028"] * 100).toFixed(2)));
+        setWageGrowth2029(parseFloat((obrData["2029"] * 100).toFixed(2)));
       }
     } catch (err) {
       console.error('Error calculating impact:', err);
@@ -80,6 +100,41 @@ export default function Home() {
       setLoading(false);
     }
   };
+
+  const addIncome = () => {
+    if (newIncomeAmount > 0) {
+      setIncomes([
+        ...incomes,
+        {
+          id: Date.now().toString(),
+          amount: newIncomeAmount,
+          type: newIncomeType
+        }
+      ]);
+      setNewIncomeAmount(0);
+      setAddIncomeModalOpen(false);
+    }
+  };
+
+  const removeIncome = (id: string) => {
+    if (incomes.length > 1) {
+      setIncomes(incomes.filter(income => income.id !== id));
+    }
+  };
+
+  const updateIncomeAmount = (id: string, amount: number) => {
+    setIncomes(incomes.map(income => 
+      income.id === id ? { ...income, amount } : income
+    ));
+  };
+
+  const updateIncomeType = (id: string, type: IncomeType) => {
+    setIncomes(incomes.map(income => 
+      income.id === id ? { ...income, type } : income
+    ));
+  };
+
+  const totalIncome = incomes.reduce((sum, income) => sum + income.amount, 0);
 
   const formatGBP = (value: number) => `£${value.toLocaleString('en-GB', {
     minimumFractionDigits: 0,
@@ -112,7 +167,7 @@ export default function Home() {
 
       <AppShell.Main pt={80}>
         <Container size="lg">
-          <Title order={1} mb="md" style={{ color: colors.BLUE }}>Income Tax Threshold Freeze Extension Impact</Title>
+          <Title order={1} mb="md" style={{ color: colors.BLUE }}>Income tax threshold freeze extension impact</Title>
           <Text mb="md">
             This tool calculates how extending the freeze on income tax thresholds to 2028/29 and 2029/30 would affect your take-home pay.
           </Text>
@@ -124,61 +179,142 @@ export default function Home() {
           <Paper withBorder p="xl" shadow="xs" radius="md" mt="xl" bg={colors.BLUE_98}>
             <Tabs defaultValue="income">
               <Tabs.List>
-                <Tabs.Tab value="income">Income Details</Tabs.Tab>
-                <Tabs.Tab value="growth">Wage Growth</Tabs.Tab>
+                <Tabs.Tab value="income">Income details</Tabs.Tab>
+                <Tabs.Tab value="growth">Wage growth</Tabs.Tab>
               </Tabs.List>
 
               <Tabs.Panel value="income" pt="md">
-                <Title order={3} mb="md" style={{ color: colors.BLUE }}>Your Annual Income (2025)</Title>
-                <NumberInput
-                  value={income}
-                  onChange={(val) => setIncome(Number(val))}
-                  label="Annual income (£)"
-                  min={0}
-                  max={1000000}
-                  step={1000}
-                  mb="md"
-                  leftSection="£"
-                />
-                <Box mt="md">
-                  <Slider
-                    value={income}
-                    onChange={setIncome}
-                    min={0}
-                    max={200000}
-                    step={1000}
-                    label={(value) => `£${value.toLocaleString()}`}
-                    mb="xl"
-                  />
+                <Title order={3} mb="md" style={{ color: colors.BLUE }}>Your annual incomes (2025)</Title>
+                <Text size="sm" c="dimmed" mb="md">
+                  Add all your income sources to get a more accurate calculation.
+                </Text>
+
+                {incomes.map((income, index) => (
+                  <Box key={income.id} mb="md" p="md" style={{ border: `1px solid ${colors.BLUE_85}`, borderRadius: '8px' }}>
+                    <Flex justify="space-between" align="center" mb="xs">
+                      <Text fw={500}>Income {index + 1}: {INCOME_TYPE_LABELS[income.type]}</Text>
+                      {incomes.length > 1 && (
+                        <ActionIcon 
+                          color="red" 
+                          variant="subtle"
+                          onClick={() => removeIncome(income.id)}
+                        >
+                          <IconTrash size={16} />
+                        </ActionIcon>
+                      )}
+                    </Flex>
+                    
+                    <Grid>
+                      <Grid.Col span={8}>
+                        <NumberInput
+                          value={income.amount}
+                          onChange={(val) => updateIncomeAmount(income.id, Number(val))}
+                          label="Annual amount (£)"
+                          min={0}
+                          max={1000000}
+                          step={1000}
+                          leftSection="£"
+                          mb="xs"
+                        />
+                        <Slider
+                          value={income.amount}
+                          onChange={(value) => updateIncomeAmount(income.id, value)}
+                          min={0}
+                          max={200000}
+                          step={1000}
+                          label={(value) => `£${value.toLocaleString()}`}
+                          mb="md"
+                        />
+                      </Grid.Col>
+                      <Grid.Col span={4}>
+                        <Select
+                          label="Income type"
+                          value={income.type}
+                          onChange={(val) => updateIncomeType(income.id, val as IncomeType)}
+                          data={[
+                            { label: 'Employment', value: 'employment_income' },
+                            { label: 'Self-Employment', value: 'self_employment_income' },
+                            { label: 'Pension', value: 'pension_income' },
+                            { label: 'Dividends', value: 'dividend_income' },
+                          ]}
+                        />
+                      </Grid.Col>
+                    </Grid>
+                  </Box>
+                ))}
+
+                <Group justify="center" mt="lg">
+                  <Button 
+                    variant="outline" 
+                    leftSection={<IconPlus size={16} />}
+                    onClick={() => setAddIncomeModalOpen(true)}
+                  >
+                    Add another income source
+                  </Button>
+                </Group>
+
+                <Box mt="xl" p="md" style={{ border: `1px solid ${colors.BLUE_85}`, borderRadius: '8px' }}>
+                  <Text fw={500} mb="md">Income summary</Text>
+                  <Text mb="xs">Total annual income: {formatGBP(totalIncome)}</Text>
+                  
+                  {incomes.length > 1 && (
+                    <Box mt="md">
+                      <Text size="sm" mb="xs">Income distribution:</Text>
+                      <Grid>
+                        {incomes.map((income) => {
+                          const percentage = Math.round((income.amount / totalIncome) * 100);
+                          return (
+                            <Grid.Col key={income.id} span={12}>
+                              <Flex align="center" gap="xs">
+                                <Box 
+                                  w={`${percentage}%`} 
+                                  style={{ 
+                                    backgroundColor: 
+                                      income.type === 'employment_income' ? colors.BLUE : 
+                                      income.type === 'self_employment_income' ? colors.TEAL_ACCENT : 
+                                      income.type === 'pension_income' ? colors.GREEN :
+                                      colors.PURPLE,
+                                    height: '20px',
+                                    minWidth: '10px',
+                                    borderRadius: '4px'
+                                  }} 
+                                />
+                                <Text size="xs">{INCOME_TYPE_LABELS[income.type]}: {percentage}%</Text>
+                              </Flex>
+                            </Grid.Col>
+                          );
+                        })}
+                      </Grid>
+                    </Box>
+                  )}
                 </Box>
-                
-                <Title order={4} mt="lg" mb="sm" style={{ color: colors.BLUE }}>Income Type</Title>
-                <SegmentedControl
-                  data={[
-                    { label: 'Employment', value: 'employment_income' },
-                    { label: 'Self-Employment', value: 'self_employment_income' },
-                    { label: 'Pension', value: 'pension_income' },
-                    { label: 'Dividends', value: 'dividend_income' },
-                  ]}
-                  value={incomeType}
-                  onChange={(value) => setIncomeType(value as IncomeType)}
-                  fullWidth
-                  mb="xl"
-                  color="brand"
-                />
               </Tabs.Panel>
 
               <Tabs.Panel value="growth" pt="md">
-                <Title order={3} mb="md" style={{ color: colors.BLUE }}>Wage Growth Assumptions</Title>
+                <Title order={3} mb="md" style={{ color: colors.BLUE }}>Wage growth assumptions</Title>
                 <Text size="sm" c="dimmed" mb="md">
                   The impact of extending the income tax threshold freeze depends on how your income grows.
-                  Set your expected annual wage growth for 2026-2029 below.
+                  {useOBRGrowth ? 
+                    'Using the latest OBR earnings growth forecasts.' :
+                    'Set your expected annual wage growth for 2026-2029 below.'
+                  }
                 </Text>
 
                 <Flex align="center" mb="md">
                   <Switch 
                     checked={useOBRGrowth}
-                    onChange={(event) => setUseOBRGrowth(event.currentTarget.checked)}
+                    onChange={(event) => {
+                      setUseOBRGrowth(event.currentTarget.checked);
+                      // If switching back to OBR and we have results, restore OBR values
+                      if (event.currentTarget.checked && results?.assumptions?.obr_earnings_growth) {
+                        // Update wage growth values with OBR projections
+                        const obrData = results.assumptions.obr_earnings_growth;
+                        setWageGrowth2026(parseFloat((obrData["2026"] * 100).toFixed(2)));
+                        setWageGrowth2027(parseFloat((obrData["2027"] * 100).toFixed(2)));
+                        setWageGrowth2028(parseFloat((obrData["2028"] * 100).toFixed(2)));
+                        setWageGrowth2029(parseFloat((obrData["2029"] * 100).toFixed(2)));
+                      }
+                    }}
                     label="Use OBR earnings growth forecasts"
                     mr="md"
                   />
@@ -194,24 +330,28 @@ export default function Home() {
                     <NumberInput
                       value={wageGrowth2026}
                       onChange={(val) => setWageGrowth2026(Number(val))}
-                      label="2026 Wage Growth (%)"
+                      label={useOBRGrowth ? "2026 OBR forecast (%)" : "2026 wage growth (%)"}
                       min={0}
                       max={20}
-                      step={0.5}
+                      step={0.1}
+                      precision={2}
                       rightSection="%"
                       disabled={useOBRGrowth}
+                      styles={useOBRGrowth ? { input: { backgroundColor: colors.BLUE_98 } } : {}}
                     />
                   </Grid.Col>
                   <Grid.Col span={6}>
                     <NumberInput
                       value={wageGrowth2027}
                       onChange={(val) => setWageGrowth2027(Number(val))}
-                      label="2027 Wage Growth (%)"
+                      label={useOBRGrowth ? "2027 OBR forecast (%)" : "2027 wage growth (%)"}
                       min={0}
                       max={20}
-                      step={0.5}
+                      step={0.1}
+                      precision={2}
                       rightSection="%"
                       disabled={useOBRGrowth}
+                      styles={useOBRGrowth ? { input: { backgroundColor: colors.BLUE_98 } } : {}}
                     />
                   </Grid.Col>
                 </Grid>
@@ -221,31 +361,35 @@ export default function Home() {
                     <NumberInput
                       value={wageGrowth2028}
                       onChange={(val) => setWageGrowth2028(Number(val))}
-                      label="2028 Wage Growth (%)"
+                      label={useOBRGrowth ? "2028 OBR forecast (%)" : "2028 wage growth (%)"}
                       min={0}
                       max={20}
-                      step={0.5}
+                      step={0.1}
+                      precision={2}
                       rightSection="%"
                       disabled={useOBRGrowth}
+                      styles={useOBRGrowth ? { input: { backgroundColor: colors.BLUE_98 } } : {}}
                     />
                   </Grid.Col>
                   <Grid.Col span={6}>
                     <NumberInput
                       value={wageGrowth2029}
                       onChange={(val) => setWageGrowth2029(Number(val))}
-                      label="2029 Wage Growth (%)"
+                      label={useOBRGrowth ? "2029 OBR forecast (%)" : "2029 wage growth (%)"}
                       min={0}
                       max={20}
-                      step={0.5}
+                      step={0.1}
+                      precision={2}
                       rightSection="%"
                       disabled={useOBRGrowth}
+                      styles={useOBRGrowth ? { input: { backgroundColor: colors.BLUE_98 } } : {}}
                     />
                   </Grid.Col>
                 </Grid>
                 
                 {!useOBRGrowth && (
                   <Box mt="md">
-                    <Text fw={500} mb="xs">2026-2029 Wage Growth</Text>
+                    <Text fw={500} mb="xs">2026-2029 wage growth</Text>
                     <Slider
                       value={wageGrowth2028} // We're using 2028 as the default for all years in the slider
                       onChange={(value) => {
@@ -272,7 +416,7 @@ export default function Home() {
                 onClick={calculateImpact}
                 loading={loading}
               >
-                Calculate Impact
+                Calculate impact
               </Button>
             </Group>
           </Paper>
@@ -286,7 +430,7 @@ export default function Home() {
           {results && (
             <Stack mt={30}>
               <Paper withBorder p="xl" shadow="xs" radius="md">
-                <Title order={3} mb="md" style={{ color: colors.BLUE }}>Impact Summary</Title>
+                <Title order={3} mb="md" style={{ color: colors.BLUE }}>Impact summary</Title>
                 <Text size="lg" mb="lg">
                   By extending the income tax threshold freeze to 2028/29 and 2029/30, you would lose approximately{' '}
                   <strong>{formatGBP(results.total_impact)}</strong> in take-home pay compared to if thresholds were
@@ -297,28 +441,30 @@ export default function Home() {
                   <Accordion.Item value="assumptions">
                     <Accordion.Control>
                       <Group>
-                        <Text>Your Assumptions</Text>
+                        <Text>Your assumptions</Text>
                         <Badge color="brand">2025-2029</Badge>
                       </Group>
                     </Accordion.Control>
                     <Accordion.Panel>
                       <Stack>
                         <Box>
-                          <Text fw={500}>Base Income (2025):</Text>
+                          <Text fw={500}>Base income (2025):</Text>
                           <Text>{formatGBP(results.assumptions.base_income)}</Text>
                         </Box>
                         <Divider />
                         <Box>
-                          <Text fw={500}>Income Type:</Text>
-                          <Text>
-                            {Object.keys(results.assumptions.income_types).map(
-                              (type) => type.replace('_', ' ')
-                            ).join(', ')}
-                          </Text>
+                          <Text fw={500}>Income sources:</Text>
+                          {Object.entries(results.assumptions.income_types).map(
+                            ([type, proportion]) => (
+                              <Text key={type}>
+                                {INCOME_TYPE_LABELS[type as IncomeType] || type.replace('_', ' ')}: {(Number(proportion) * 100).toFixed(1)}%
+                              </Text>
+                            )
+                          )}
                         </Box>
                         <Divider />
                         <Box>
-                          <Text fw={500}>Wage Growth Assumptions:</Text>
+                          <Text fw={500}>Wage growth assumptions:</Text>
                           {Object.entries(results.assumptions.wage_growth).map(([year, rate]) => (
                             <Text key={year}>{year}: {(Number(rate) * 100).toFixed(1)}%</Text>
                           ))}
@@ -330,18 +476,18 @@ export default function Home() {
                   <Accordion.Item value="tax_parameters">
                     <Accordion.Control>
                       <Group>
-                        <Text>Income Tax Parameters</Text>
+                        <Text>Income tax parameters</Text>
                         <Badge color="accent">Compare scenarios</Badge>
                       </Group>
                     </Accordion.Control>
                     <Accordion.Panel>
-                      <Title order={4} mb="md">Personal Allowance</Title>
+                      <Title order={4} mb="md">Personal allowance</Title>
                       <Table>
                         <Table.Thead>
                           <Table.Tr>
                             <Table.Th>Year</Table.Th>
-                            <Table.Th>No Extension (£)</Table.Th>
-                            <Table.Th>With Extension (£)</Table.Th>
+                            <Table.Th>No extension (£)</Table.Th>
+                            <Table.Th>With extension (£)</Table.Th>
                             <Table.Th>Difference (£)</Table.Th>
                           </Table.Tr>
                         </Table.Thead>
@@ -357,13 +503,13 @@ export default function Home() {
                         </Table.Tbody>
                       </Table>
 
-                      <Title order={4} mt="xl" mb="md">Higher Rate Threshold</Title>
+                      <Title order={4} mt="xl" mb="md">Higher rate threshold</Title>
                       <Table>
                         <Table.Thead>
                           <Table.Tr>
                             <Table.Th>Year</Table.Th>
-                            <Table.Th>No Extension (£)</Table.Th>
-                            <Table.Th>With Extension (£)</Table.Th>
+                            <Table.Th>No extension (£)</Table.Th>
+                            <Table.Th>With extension (£)</Table.Th>
                             <Table.Th>Difference (£)</Table.Th>
                           </Table.Tr>
                         </Table.Thead>
@@ -389,7 +535,7 @@ export default function Home() {
               </Paper>
               
               <Paper withBorder p="xl" shadow="xs" radius="md">
-                <Title order={3} mb="md" style={{ color: colors.BLUE }}>Year-by-Year Net Income</Title>
+                <Title order={3} mb="md" style={{ color: colors.BLUE }}>Year-by-year net income</Title>
                 <ResponsiveContainer width="100%" height={400}>
                   <LineChart data={results.chart_data}>
                     <CartesianGrid strokeDasharray="3 3" />
@@ -405,7 +551,7 @@ export default function Home() {
                     <Line 
                       type="monotone" 
                       dataKey="with_freeze" 
-                      name="Net Income (Extended Freeze)" 
+                      name="Net income (extended freeze)" 
                       stroke={colors.BLUE} 
                       strokeWidth={2}
                       activeDot={{ r: 8 }}
@@ -413,7 +559,7 @@ export default function Home() {
                     <Line 
                       type="monotone" 
                       dataKey="without_freeze" 
-                      name="Net Income (No Extension)" 
+                      name="Net income (no extension)" 
                       stroke={colors.TEAL_ACCENT} 
                       strokeWidth={2}
                       activeDot={{ r: 8 }}
@@ -429,7 +575,7 @@ export default function Home() {
               </Paper>
               
               <Paper withBorder p="xl" shadow="xs" radius="md">
-                <Title order={3} mb="md" style={{ color: colors.BLUE }}>Annual Loss Due to Freeze Extension</Title>
+                <Title order={3} mb="md" style={{ color: colors.BLUE }}>Annual loss due to freeze extension</Title>
                 <ResponsiveContainer width="100%" height={300}>
                   <LineChart data={results.chart_data}>
                     <CartesianGrid strokeDasharray="3 3" />
@@ -445,7 +591,7 @@ export default function Home() {
                     <Line 
                       type="monotone" 
                       dataKey="difference" 
-                      name="Annual Loss" 
+                      name="Annual loss" 
                       stroke={colors.DARK_RED} 
                       strokeWidth={2}
                       activeDot={{ r: 8 }}
@@ -466,6 +612,55 @@ export default function Home() {
           </Box>
         </Container>
       </AppShell.Main>
+
+      {/* Add Income Modal */}
+      <Modal
+        opened={addIncomeModalOpen}
+        onClose={() => setAddIncomeModalOpen(false)}
+        title="Add income source"
+        centered
+      >
+        <Stack>
+          <NumberInput
+            label="Annual amount (£)"
+            value={newIncomeAmount}
+            onChange={(val) => setNewIncomeAmount(Number(val))}
+            min={0}
+            max={1000000}
+            step={1000}
+            leftSection="£"
+            mb="xs"
+          />
+          
+          <Box mb="md">
+            <Slider
+              value={newIncomeAmount}
+              onChange={setNewIncomeAmount}
+              min={0}
+              max={200000}
+              step={1000}
+              label={(value) => `£${value.toLocaleString()}`}
+            />
+          </Box>
+          
+          <Select
+            label="Income type"
+            value={newIncomeType}
+            onChange={(val) => setNewIncomeType(val as IncomeType)}
+            data={[
+              { label: 'Employment', value: 'employment_income' },
+              { label: 'Self-Employment', value: 'self_employment_income' },
+              { label: 'Pension', value: 'pension_income' },
+              { label: 'Dividends', value: 'dividend_income' },
+            ]}
+          />
+          
+          <Group justify="flex-end" mt="md">
+            <Button variant="outline" onClick={() => setAddIncomeModalOpen(false)}>Cancel</Button>
+            <Button onClick={addIncome}>Add</Button>
+          </Group>
+        </Stack>
+      </Modal>
     </AppShell>
   );
 }

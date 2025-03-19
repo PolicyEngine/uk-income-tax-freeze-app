@@ -18,11 +18,13 @@ async def calculate_impact(request: WageGrowthRequest):
         CalculationResponse with impact analysis
     """
     try:
+        # Convert the income items to a list of dictionaries
+        income_items = [{"amount": item.amount, "type": item.type} for item in request.incomes]
+        
         # Calculate impact over years using the provided parameters
         results = calculate_impact_over_years(
-            income=request.income,
-            wage_growth=request.wage_growth,
-            income_types=request.income_types
+            incomes=income_items,
+            wage_growth=request.wage_growth
         )
         
         # Get projected thresholds for both scenarios
@@ -52,13 +54,27 @@ async def calculate_impact(request: WageGrowthRequest):
             for year in range(2028, 2030)
         )
         
-        # Fill in any missing wage growth values with OBR projections
+        # Fill in wage growth values - use OBR if empty dict was passed or fall back to custom values
         complete_wage_growth = {}
         for year in range(2026, 2030):
             year_str = str(year)
-            complete_wage_growth[year_str] = request.wage_growth.get(
-                year_str, OBR_EARNINGS_GROWTH.get(year_str, 0.02)
-            )
+            if not request.wage_growth:  # Empty dict = use OBR projections
+                complete_wage_growth[year_str] = OBR_EARNINGS_GROWTH.get(year_str, 0.02)
+            else:
+                complete_wage_growth[year_str] = request.wage_growth.get(
+                    year_str, OBR_EARNINGS_GROWTH.get(year_str, 0.02)
+                )
+        
+        # Calculate total base income
+        total_base_income = sum(item.amount for item in request.incomes)
+        
+        # Calculate income type proportions for the assumptions
+        income_types = {}
+        for item in request.incomes:
+            if item.type in income_types:
+                income_types[item.type] += item.amount / total_base_income
+            else:
+                income_types[item.type] = item.amount / total_base_income
             
         # Format tax parameters for response
         tax_parameters = {
@@ -79,9 +95,9 @@ async def calculate_impact(request: WageGrowthRequest):
             chart_data=chart_data,
             total_impact=total_impact,
             assumptions={
-                "base_income": request.income,
+                "base_income": total_base_income,
                 "wage_growth": complete_wage_growth,
-                "income_types": request.income_types,
+                "income_types": income_types,
                 "obr_earnings_growth": {str(k): v for k, v in OBR_EARNINGS_GROWTH.items()}
             },
             tax_parameters=tax_parameters
