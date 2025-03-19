@@ -1,9 +1,17 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Dict, List, Optional, Union
 
 
-class IncomeRequest(BaseModel):
-    income: float
+class WageGrowthRequest(BaseModel):
+    income: float = Field(..., description="Current annual income in GBP")
+    wage_growth: Dict[str, float] = Field(
+        default_factory=lambda: {"2028": 0.02, "2029": 0.02},
+        description="Annual wage growth rate for future years (e.g., {'2028': 0.02, '2029': 0.02} for 2% growth)"
+    )
+    income_types: Dict[str, float] = Field(
+        default_factory=lambda: {"employment_income": 1.0},
+        description="Proportion of income by type (should sum to 1.0)"
+    )
 
 
 class YearlyDataPoint(BaseModel):
@@ -18,3 +26,4 @@ class CalculationResponse(BaseModel):
     without_freeze: Dict[str, float]
     chart_data: List[Dict[str, Union[int, float]]]
     total_impact: float
+    assumptions: Dict[str, Union[float, Dict[str, float]]]

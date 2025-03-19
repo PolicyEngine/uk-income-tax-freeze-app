@@ -1,68 +1,115 @@
-from policyengine_uk import Microsimulation
-from typing import Dict
+from policyengine_uk import Simulation
+from typing import Dict, List, Union
+import pandas as pd
+import numpy as np
+
+FREEZE_REFORM = {
+    "gov.hmrc.income_tax.allowances.personal_allowance.amount": {
+        "2028-01-01.2029-12-31": 12_570,
+        "2029-01-01.2030-12-31": 12_570,
+    },
+    "gov.hmrc.income_tax.rates.uk[1].threshold": {
+        "2028-01-01.2029-12-31": 37_700,
+        "2029-01-01.2030-12-31": 37_700,
+    },
+}
+
+VARIABLES = [
+    "person_id",
+    "employment_income",
+    "self_employment_income",
+    "state_pension",
+    "pension_income",
+    "dividend_income",
+    "savings_interest_income",
+    "property_income",
+    "income_tax",
+    "household_market_income",
+    "household_tax",
+    "household_benefits",
+    "household_net_income",
+]
 
 
-def calculate_over_years(income: float, freeze_thresholds: bool = True) -> Dict[int, float]:
+def calculate_household_df(household: dict, year: int, freeze_thresholds: bool = False) -> pd.DataFrame:
     """
-    Calculate household net income over multiple years based on the freeze policy.
+    From an OpenFisca-style household dictionary, year, and reform policy, return a dataframe with a row for each person
+    and a column for relevant variables.
+    """
+    simulation = Simulation(situation=household, reform=FREEZE_REFORM if freeze_thresholds else None)
+    
+    return simulation.calculate_dataframe(VARIABLES, year)
+
+
+def build_household(
+    income: float, 
+    year: int, 
+    income_types: Dict[str, float],
+    wage_growth: Dict[str, float]
+) -> dict:
+    """
+    Create a household dictionary for PolicyEngine simulation.
     
     Args:
-        income: Annual employment income
-        freeze_thresholds: Whether to freeze income tax thresholds or adjust for inflation
+        income: Base income amount
+        year: The simulation year
+        income_types: Dictionary mapping income types to proportions
+        wage_growth: Dictionary mapping years to growth rates
         
     Returns:
-        Dictionary mapping years to net income values
+        Household dictionary for PolicyEngine
     """
-    results = {}
-    for year in range(2022, 2030):
-        # Create simulation for each year
-        simulation = Microsimulation()
-        
-        # Create synthetic household with given income
-        simulation.add_person(
-            person_id=0, 
-            age=40, 
-            employment_income=income
-        )
-        simulation.set_household_weight(0, 1)
-        
-        # Apply income tax threshold adjustments based on freeze policy
-        if not freeze_thresholds and year > 2022:
-            # Assume 2% inflation for uprating thresholds
-            inflation_adjustment = (1.02) ** (year - 2022)
-            # Adjust thresholds if not frozen
-            simulation.modify_parameters(
-                lambda p, year=year, adj=inflation_adjustment: adjust_thresholds(p, year, adj)
-            )
-            
-        # Calculate net income
-        simulation.calculate("household_net_income")
-        
-        # Store result for this year
-        results[year] = float(simulation.calculate("household_net_income").values[0])
+    # Apply wage growth to income for years after the current year (2023)
+    current_year = 2023
+    adjusted_income = income
     
-    return results
+    # Apply compounding growth for each year
+    for growth_year in range(current_year + 1, year + 1):
+        growth_rate = wage_growth.get(str(growth_year), 0.02)  # Default to 2% growth
+        adjusted_income *= (1 + growth_rate)
+    
+    # Create person with distributed income sources
+    person = {"age": 40}
+    
+    for income_type, proportion in income_types.items():
+        if proportion > 0:
+            person[income_type] = adjusted_income * proportion
+    
+    return {"people": {"person": person}}
 
 
-def adjust_thresholds(parameters, year: int, adjustment_factor: float):
+def calculate_impact_over_years(
+    income: float,
+    wage_growth: Dict[str, float],
+    income_types: Dict[str, float]
+) -> Dict[str, Dict[int, float]]:
     """
-    Adjust income tax thresholds based on an inflation factor.
+    Calculate the impact of income tax threshold freezes over multiple years.
     
     Args:
-        parameters: PolicyEngine parameters tree
-        year: The tax year
-        adjustment_factor: The inflation adjustment factor
+        income: Base income (current year)
+        wage_growth: Dictionary of wage growth rates by year
+        income_types: Dictionary of income type proportions
         
     Returns:
-        Modified parameters
+        Dictionary with results for both policy scenarios
     """
-    # Adjust income tax thresholds for inflation
-    for threshold in ["personal_allowance", "basic_rate_limit", "higher_rate_limit"]:
-        if hasattr(parameters.gov.hmrc.income_tax, threshold):
-            current_value = getattr(parameters.gov.hmrc.income_tax, threshold).values[-1]
-            setattr(
-                parameters.gov.hmrc.income_tax, 
-                threshold, 
-                current_value * adjustment_factor
-            )
-    return parameters
+    with_freeze_results = {}
+    without_freeze_results = {}
+    
+    for year in range(2023, 2030):
+        # Create household for this year
+        household = build_household(income, year, income_types, wage_growth)
+        
+        # Calculate with freeze
+        with_freeze_df = calculate_household_df(household, year, freeze_thresholds=True)
+        with_freeze_results[year] = float(with_freeze_df["household_net_income"].iloc[0])
+        
+        # Calculate without freeze
+        without_freeze_df = calculate_household_df(household, year, freeze_thresholds=False)
+        without_freeze_results[year] = float(without_freeze_df["household_net_income"].iloc[0])
+    
+    return {
+        "with_freeze": with_freeze_results,
+        "without_freeze": without_freeze_results
+    }
