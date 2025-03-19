@@ -1,0 +1,25 @@
+{
+  "name": "uk-income-tax-freeze-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@mantine/core": "^7.7.0",
+    "@mantine/hooks": "^7.7.0",
+    "axios": "^1.6.8",
+    "next": "^14.2.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "recharts": "^2.12.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.1",
+    "@types/react": "^18.2.69",
+    "typescript": "^5.5.2"
+  }
+}

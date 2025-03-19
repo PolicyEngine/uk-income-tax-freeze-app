@@ -1,0 +1,25 @@
+:root {
+  --font-roboto: var(--font-roboto);
+  --font-roboto-serif: var(--font-roboto-serif);
+  --font-roboto-mono: var(--font-roboto-mono);
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  background-color: #F7FAFD;
+}
+
+.mantine-AppShell-header {
+  background-color: #ffffff;
+  border-bottom: 1px solid #e9ecef;
+}
+
+a {
+  color: #2C6496;
+  text-decoration: none;
+}
