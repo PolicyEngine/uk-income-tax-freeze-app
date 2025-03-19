@@ -55,23 +55,23 @@ VARIABLES = [
     "household_tax",
     "household_benefits",
     "household_net_income",
+    "household_weight",
 ]
 
-baseline_microsimulation = Microsimulation(tax_benefit_system=baseline_system, dataset="hf://policyengine/policyengine-uk-data/enhanced_frs_2022_23.h5")
-reform_microsimulation = Microsimulation(tax_benefit_system=reform_system, dataset="hf://policyengine/policyengine-uk-data/enhanced_frs_2022_23.h5")
+baseline_microsimulation = Microsimulation(dataset="hf://policyengine/policyengine-uk-data/enhanced_frs_2022_23.h5")
+reform_microsimulation = Microsimulation(reform=FREEZE_REFORM, dataset="hf://policyengine/policyengine-uk-data/enhanced_frs_2022_23.h5")
 
 baseline_population_df_2028 = baseline_microsimulation.calculate_dataframe(VARIABLES[1:], 2028)
-selected_households = np.random.choice(baseline_population_df_2028.household_id, 100, replace=False, p=baseline_population_df_2028.household_weight.values / baseline_population_df_2028.household_weight.sum())
+selected_households = np.random.choice(baseline_population_df_2028.household_id.values, 1000, replace=False, p=baseline_population_df_2028.household_weight.values / baseline_population_df_2028.household_weight.values.sum())
 reform_population_df_2028 = reform_microsimulation.calculate_dataframe(VARIABLES[1:], 2028)
 
 baseline_population_df_2029 = baseline_microsimulation.calculate_dataframe(VARIABLES[1:], 2029)
 reform_population_df_2029 = reform_microsimulation.calculate_dataframe(VARIABLES[1:], 2029)
 
-baseline_population_df_2028 = baseline_population_df_2028[baseline_population_df_2028.household_id.isin(selected_households)]
-reform_population_df_2028 = reform_population_df_2028[reform_population_df_2028.household_id.isin(selected_households)]
-baseline_population_df_2029 = baseline_population_df_2029[baseline_population_df_2029.household_id.isin(selected_households)]
-reform_population_df_2029 = reform_population_df_2029[reform_population_df_2029.household_id.isin(selected_households)]
-
+baseline_population_df_2028 = baseline_population_df_2028.set_index("household_id").loc[selected_households].reset_index()
+reform_population_df_2028 = reform_population_df_2028.set_index("household_id").loc[selected_households].reset_index()
+baseline_population_df_2029 = baseline_population_df_2029.set_index("household_id").loc[selected_households].reset_index()
+reform_population_df_2029 = reform_population_df_2029.set_index("household_id").loc[selected_households].reset_index()
 
 def calculate_household_df(household: dict, year: int, freeze_thresholds: bool = False) -> pd.DataFrame:
     """
@@ -163,6 +163,73 @@ def calculate_impact_over_years(
         "with_freeze": with_freeze_results,
         "without_freeze": without_freeze_results
     }
+
+
+def get_income_percentile_impact_data() -> List[Dict[str, Union[float, int]]]:
+    """
+    Generate data for a scatter plot showing the percentage change in combined net income 
+    across income percentiles due to the threshold freeze extension.
+    
+    Returns:
+        List of dictionaries with income percentile and percentage change in net income
+    """
+    # First, calculate the impact for each household in 2028 and 2029
+    baseline_combined_income = baseline_population_df_2028.household_net_income.values + baseline_population_df_2029.household_net_income.values
+    reform_combined_income = reform_population_df_2028.household_net_income.values + reform_population_df_2029.household_net_income.values
+    
+    # Calculate the absolute difference in combined income (£)
+    absolute_difference = baseline_combined_income - reform_combined_income
+    
+    # Calculate the percentage change in combined income (as decimal, not %)
+    percentage_change = (baseline_combined_income - reform_combined_income) / baseline_combined_income
+    
+    # Handle NaN, Infinity values, and clip at 0
+    absolute_difference = pd.Series(absolute_difference).replace([np.inf, -np.inf], np.nan)
+    absolute_difference = np.maximum(absolute_difference, 0)  # Clip at 0
+    
+    percentage_change = pd.Series(percentage_change).replace([np.inf, -np.inf], np.nan)
+    percentage_change = np.maximum(percentage_change, 0)  # Clip at 0
+    
+    # Create a DataFrame with the necessary data
+    impact_df = pd.DataFrame({
+        'household_id': baseline_population_df_2028.household_id,
+        'net_income': baseline_population_df_2028.household_net_income,
+        'percentage_change': percentage_change.values,
+        'absolute_difference': absolute_difference.values,
+        'household_weight': baseline_population_df_2028.household_weight
+    })
+    
+    # Drop rows with NaN values
+    impact_df = impact_df.dropna()
+    
+    # Calculate percentiles based on household net income, as suggested
+    impact_df['percentile'] = impact_df.net_income.rank(pct=True) * 100
+    
+    # Convert to list of dictionaries for the API response
+    scatter_data = []
+    for _, row in impact_df.iterrows():
+        try:
+            # Ensure all values are valid for JSON serialization
+            percentile = float(row['percentile'])
+            percentage_change = float(row['percentage_change']) * 100
+            absolute_difference = float(row['absolute_difference'])
+            
+            # Check for NaN or infinity
+            if (np.isnan(percentile) or np.isinf(percentile) or 
+                np.isnan(percentage_change) or np.isinf(percentage_change) or
+                np.isnan(absolute_difference) or np.isinf(absolute_difference)):
+                continue
+                
+            scatter_data.append({
+                'percentile': percentile,
+                'percentage_change': percentage_change,  # Convert to percentage
+                'absolute_difference': absolute_difference
+            })
+        except (ValueError, TypeError):
+            # Skip any rows that can't be properly converted
+            continue
+    
+    return scatter_data
 
 
 def get_projected_thresholds() -> Tuple[Dict[str, Dict[int, float]], Dict[str, Dict[int, float]]]:

@@ -31,3 +31,13 @@ class CalculationResponse(BaseModel):
     tax_parameters: Dict[str, Any] = Field(
         description="Information about tax parameters in each scenario"
     )
+
+
+class ScatterDataPoint(BaseModel):
+    percentile: float
+    percentage_change: float
+    absolute_difference: float
+
+
+class PercentileImpactResponse(BaseModel):
+    scatter_data: List[ScatterDataPoint]

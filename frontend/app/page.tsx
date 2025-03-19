@@ -28,10 +28,24 @@ import {
   ActionIcon,
   Modal,
   Select,
+  Loader,
 } from '@mantine/core';
 import { IconPlus, IconTrash } from '@tabler/icons-react';
 import axios from 'axios';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
+import { 
+  LineChart, 
+  Line, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip as RechartsTooltip, 
+  Legend, 
+  ResponsiveContainer,
+  ScatterChart,
+  Scatter,
+  ZAxis,
+  ReferenceArea
+} from 'recharts';
 import { colors } from './styles/colors';
 
 type IncomeType = 'employment_income' | 'self_employment_income' | 'pension_income' | 'dividend_income';
@@ -64,6 +78,9 @@ export default function Home() {
   const [addIncomeModalOpen, setAddIncomeModalOpen] = useState(false);
   const [newIncomeAmount, setNewIncomeAmount] = useState(0);
   const [newIncomeType, setNewIncomeType] = useState<IncomeType>('employment_income');
+  const [percentileData, setPercentileData] = useState<any>(null);
+  const [loadingPercentileData, setLoadingPercentileData] = useState(false);
+  const [showAbsoluteValues, setShowAbsoluteValues] = useState(false);
   
   const calculateImpact = async () => {
     try {
@@ -142,6 +159,23 @@ export default function Home() {
   })}`;
   
   const formatPercentage = (value: number) => `${value}%`;
+  
+  const fetchPercentileData = async () => {
+    try {
+      setLoadingPercentileData(true);
+      const response = await axios.get('/api/percentile-impact');
+      setPercentileData(response.data);
+    } catch (err) {
+      console.error('Error fetching percentile data:', err);
+    } finally {
+      setLoadingPercentileData(false);
+    }
+  };
+  
+  // Fetch percentile data on component mount
+  useEffect(() => {
+    fetchPercentileData();
+  }, []);
 
   return (
     <AppShell 
@@ -159,7 +193,7 @@ export default function Home() {
             />
             <Text fw={700} size="lg">PolicyEngine</Text>
             <Text size="sm" c="dimmed" style={{ marginLeft: 'auto' }}>
-              UK Income Tax Threshold Freeze Extension Analysis
+              UK income tax freeze extension analysis
             </Text>
           </Flex>
         </Container>
@@ -427,6 +461,105 @@ export default function Home() {
             </Paper>
           )}
           
+          <Paper withBorder p="xl" shadow="xs" radius="md" mt="xl">
+            <Title order={3} mb="md" style={{ color: colors.BLUE }}>Impact across income distribution</Title>
+            {loadingPercentileData ? (
+              <Flex justify="center" align="center" h={300}>
+                <Loader />
+              </Flex>
+            ) : percentileData ? (
+              <>
+                <Flex align="center" justify="space-between" mb="lg">
+                  <Text size="sm" c="dimmed">
+                    This chart shows how the income tax threshold freeze extension affects households 
+                    across different income levels. Each point represents a household, with their 
+                    position on the income distribution (percentile) and their loss.
+                  </Text>
+                  <Flex align="center" gap="md">
+                    <Text size="sm">% of income</Text>
+                    <Switch 
+                      checked={showAbsoluteValues}
+                      onChange={(event) => setShowAbsoluteValues(event.currentTarget.checked)}
+                    />
+                    <Text size="sm">£ amount</Text>
+                  </Flex>
+                </Flex>
+                <ResponsiveContainer width="100%" height={400}>
+                  <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 60 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis 
+                      type="number" 
+                      dataKey="percentile" 
+                      name="Income Percentile" 
+                      label={{ value: 'Income Percentile', position: 'bottom', offset: 5 }}
+                      domain={[0, 100]}
+                    />
+                    <YAxis 
+                      type="number" 
+                      dataKey={showAbsoluteValues ? "absolute_difference" : "percentage_change"}
+                      name={showAbsoluteValues ? "Income Loss (£)" : "Income Loss (%)"}
+                      label={{ 
+                        value: showAbsoluteValues ? 'Income Loss (£)' : 'Income Loss (%)', 
+                        angle: -90, 
+                        position: 'insideLeft' 
+                      }}
+                      tickFormatter={(value) => showAbsoluteValues ? `£${Math.round(value).toLocaleString()}` : `${value.toFixed(1)}%`}
+                    />
+                    {/* All dots same size, no ZAxis needed */}
+                    <RechartsTooltip 
+                      cursor={{ strokeDasharray: '3 3' }}
+                      formatter={(value: any, name: string) => {
+                        if (name === 'Income Percentile') return `${value.toFixed(1)}`;
+                        if (name === 'Income Loss (%)') return `${value.toFixed(2)}%`;
+                        if (name === 'Income Loss (£)') return formatGBP(value);
+                        return value;
+                      }}
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          return (
+                            <div style={{ backgroundColor: 'white', padding: '10px', border: '1px solid #ccc', borderRadius: '5px' }}>
+                              <p><strong>Income percentile:</strong> {payload[0].payload.percentile.toFixed(1)}</p>
+                              <p><strong>Income loss:</strong> {
+                                showAbsoluteValues ? 
+                                formatGBP(payload[0].payload.absolute_difference) : 
+                                `${payload[0].payload.percentage_change.toFixed(2)}%`
+                              }</p>
+                              <p><strong>{showAbsoluteValues ? "As percentage:" : "In pounds:"}</strong> {
+                                !showAbsoluteValues ? 
+                                formatGBP(payload[0].payload.absolute_difference) : 
+                                `${payload[0].payload.percentage_change.toFixed(2)}%`
+                              }</p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Scatter 
+                      name="Households" 
+                      data={percentileData.scatter_data} 
+                      fill={colors.BLUE}
+                      opacity={0.7}
+                      shape="circle"
+                      legendType="circle"
+                      isAnimationActive={false}
+                    />
+                    <ReferenceArea y1={0} y2={0.1} strokeOpacity={0.3} />
+                  </ScatterChart>
+                </ResponsiveContainer>
+                <Box my="md" p="md" style={{ backgroundColor: colors.BLUE_98 }} radius="md">
+                  <Text size="sm">
+                    <strong>Note:</strong> This chart shows data for a representative sample of UK households.
+                    Values represent income losses over the combined period 2028-2029, with the toggle above 
+                    allowing you to switch between percentage of income and absolute pound amounts.
+                  </Text>
+                </Box>
+              </>
+            ) : (
+              <Text c="dimmed">Unable to load percentile data.</Text>
+            )}
+          </Paper>
+          
           {results && (
             <Stack mt={30}>
               <Paper withBorder p="xl" shadow="xs" radius="md">
@@ -599,6 +732,7 @@ export default function Home() {
                   </LineChart>
                 </ResponsiveContainer>
               </Paper>
+              
             </Stack>
           )}
           

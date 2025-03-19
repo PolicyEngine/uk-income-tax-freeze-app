@@ -1,6 +1,12 @@
 from fastapi import APIRouter, HTTPException
-from .models import WageGrowthRequest, CalculationResponse
-from .calculator import calculate_impact_over_years, get_projected_thresholds, OBR_EARNINGS_GROWTH, CURRENT_PARAMETERS
+from .models import WageGrowthRequest, CalculationResponse, PercentileImpactResponse
+from .calculator import (
+    calculate_impact_over_years, 
+    get_projected_thresholds, 
+    get_income_percentile_impact_data,
+    OBR_EARNINGS_GROWTH, 
+    CURRENT_PARAMETERS
+)
 from typing import Dict, List, Union
 
 router = APIRouter(prefix="/api")
@@ -102,5 +108,21 @@ async def calculate_impact(request: WageGrowthRequest):
             },
             tax_parameters=tax_parameters
         )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/percentile-impact", response_model=PercentileImpactResponse)
+async def get_percentile_impact():
+    """
+    Get scatter plot data showing the percentage change in combined net income (2028-2029)
+    across income percentiles due to the threshold freeze extension.
+    
+    Returns:
+        PercentileImpactResponse with scatter plot data
+    """
+    try:
+        scatter_data = get_income_percentile_impact_data()
+        return PercentileImpactResponse(scatter_data=scatter_data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
