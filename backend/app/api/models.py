@@ -14,7 +14,7 @@ class YearlyDataPoint(BaseModel):
 
 
 class CalculationResponse(BaseModel):
-    with_freeze: Dict[int, float]
-    without_freeze: Dict[int, float]
-    chart_data: List[YearlyDataPoint]
+    with_freeze: Dict[str, float]
+    without_freeze: Dict[str, float]
+    chart_data: List[Dict[str, Union[int, float]]]
     total_impact: float
