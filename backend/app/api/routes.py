@@ -9,7 +9,7 @@ router = APIRouter(prefix="/api")
 @router.post("/calculate", response_model=CalculationResponse)
 async def calculate_impact(request: WageGrowthRequest):
     """
-    Calculate the impact of income tax threshold freezes based on the provided income and wage growth.
+    Calculate the impact of extending the income tax threshold freeze to 2028/29 and 2029/30.
     
     Args:
         request: Income and wage growth request
@@ -28,9 +28,9 @@ async def calculate_impact(request: WageGrowthRequest):
         with_freeze_results = results["with_freeze"]
         without_freeze_results = results["without_freeze"]
         
-        # Format results for chart
+        # Format results for chart - only for years 2025-2029
         chart_data = []
-        for year in range(2023, 2030):
+        for year in range(2025, 2030):
             chart_data.append({
                 "year": year,
                 "with_freeze": with_freeze_results.get(year, 0),
@@ -42,10 +42,11 @@ async def calculate_impact(request: WageGrowthRequest):
         with_freeze_str_keys = {str(k): v for k, v in with_freeze_results.items()}
         without_freeze_str_keys = {str(k): v for k, v in without_freeze_results.items()}
         
-        # Calculate total impact (the extra tax paid due to frozen thresholds)
+        # Calculate total impact - differences only matter in 2028-2029
+        # since the freeze is already in place until 2027/28
         total_impact = sum(
             without_freeze_results.get(year, 0) - with_freeze_results.get(year, 0) 
-            for year in range(2023, 2030)
+            for year in range(2028, 2030)
         )
         
         return CalculationResponse(

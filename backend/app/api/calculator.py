@@ -1,8 +1,10 @@
-from policyengine_uk import Simulation
+from policyengine_uk import Simulation, CountryTaxBenefitSystem
+from policyengine_core.reforms import Reform
 from typing import Dict, List, Union
 import pandas as pd
 import numpy as np
 
+# Reform that extends the freeze to 2028/29 and 2029/30
 FREEZE_REFORM = {
     "gov.hmrc.income_tax.allowances.personal_allowance.amount": {
         "2028-01-01.2029-12-31": 12_570,
@@ -13,6 +15,9 @@ FREEZE_REFORM = {
         "2029-01-01.2030-12-31": 37_700,
     },
 }
+
+baseline_system = CountryTaxBenefitSystem()
+reform_system = Reform.from_dict(FREEZE_REFORM)(CountryTaxBenefitSystem())
 
 VARIABLES = [
     "person_id",
@@ -36,9 +41,15 @@ def calculate_household_df(household: dict, year: int, freeze_thresholds: bool =
     From an OpenFisca-style household dictionary, year, and reform policy, return a dataframe with a row for each person
     and a column for relevant variables.
     """
-    simulation = Simulation(situation=household, reform=FREEZE_REFORM if freeze_thresholds else None)
-    
-    return simulation.calculate_dataframe(VARIABLES, year)
+    import time
+    start = time.time()
+    simulation = Simulation(situation=household, tax_benefit_system=reform_system if freeze_thresholds else baseline_system)
+    print(f"Simulation setup took {time.time() - start:.2f} seconds")
+    start = time.time()
+    result = simulation.calculate_dataframe(VARIABLES, year)
+    print(f"Simulation calculation took {time.time() - start:.2f} seconds")
+    return result
+
 
 
 def build_household(
@@ -51,7 +62,7 @@ def build_household(
     Create a household dictionary for PolicyEngine simulation.
     
     Args:
-        income: Base income amount
+        income: Base income amount (2025)
         year: The simulation year
         income_types: Dictionary mapping income types to proportions
         wage_growth: Dictionary mapping years to growth rates
@@ -59,12 +70,12 @@ def build_household(
     Returns:
         Household dictionary for PolicyEngine
     """
-    # Apply wage growth to income for years after the current year (2023)
-    current_year = 2023
+    # Apply wage growth to income for years after the base year (2025)
+    base_year = 2025
     adjusted_income = income
     
-    # Apply compounding growth for each year
-    for growth_year in range(current_year + 1, year + 1):
+    # Apply compounding growth for each year after 2025
+    for growth_year in range(base_year + 1, year + 1):
         growth_rate = wage_growth.get(str(growth_year), 0.02)  # Default to 2% growth
         adjusted_income *= (1 + growth_rate)
     
@@ -84,10 +95,10 @@ def calculate_impact_over_years(
     income_types: Dict[str, float]
 ) -> Dict[str, Dict[int, float]]:
     """
-    Calculate the impact of income tax threshold freezes over multiple years.
+    Calculate the impact of extending the income tax threshold freeze to 2028/29 and 2029/30.
     
     Args:
-        income: Base income (current year)
+        income: Base income (2025)
         wage_growth: Dictionary of wage growth rates by year
         income_types: Dictionary of income type proportions
         
@@ -97,15 +108,16 @@ def calculate_impact_over_years(
     with_freeze_results = {}
     without_freeze_results = {}
     
-    for year in range(2023, 2030):
+    # Only calculate for years 2025 through 2029
+    for year in range(2025, 2030):
         # Create household for this year
         household = build_household(income, year, income_types, wage_growth)
         
-        # Calculate with freeze
+        # Calculate with freeze extension
         with_freeze_df = calculate_household_df(household, year, freeze_thresholds=True)
         with_freeze_results[year] = float(with_freeze_df["household_net_income"].iloc[0])
         
-        # Calculate without freeze
+        # Calculate without freeze extension (status quo - thresholds would be uprated)
         without_freeze_df = calculate_household_df(household, year, freeze_thresholds=False)
         without_freeze_results[year] = float(without_freeze_df["household_net_income"].iloc[0])
     

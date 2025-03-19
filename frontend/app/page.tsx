@@ -31,6 +31,8 @@ type IncomeType = 'employment_income' | 'self_employment_income' | 'pension_inco
 
 export default function Home() {
   const [income, setIncome] = useState(30000);
+  const [wageGrowth2026, setWageGrowth2026] = useState(2);
+  const [wageGrowth2027, setWageGrowth2027] = useState(2);
   const [wageGrowth2028, setWageGrowth2028] = useState(2);
   const [wageGrowth2029, setWageGrowth2029] = useState(2);
   const [incomeType, setIncomeType] = useState<IncomeType>('employment_income');
@@ -50,6 +52,8 @@ export default function Home() {
       const response = await axios.post('/api/calculate', { 
         income,
         wage_growth: {
+          "2026": wageGrowth2026 / 100,
+          "2027": wageGrowth2027 / 100,
           "2028": wageGrowth2028 / 100,
           "2029": wageGrowth2029 / 100
         },
@@ -88,7 +92,7 @@ export default function Home() {
             />
             <Text fw={700} size="lg">PolicyEngine</Text>
             <Text size="sm" c="dimmed" style={{ marginLeft: 'auto' }}>
-              UK Income Tax Freeze Analysis
+              UK Income Tax Threshold Freeze Extension Analysis
             </Text>
           </Flex>
         </Container>
@@ -96,11 +100,13 @@ export default function Home() {
 
       <AppShell.Main pt={80}>
         <Container size="lg">
-          <Title order={1} mb="md" style={{ color: colors.BLUE }}>UK Income Tax Freeze Impact</Title>
-          <Text mb="xl">
-            This tool calculates how the freeze on income tax thresholds affects your take-home pay.
-            The UK government has frozen income tax thresholds until 2028, which means more people
-            are pulled into higher tax bands as their incomes rise with inflation.
+          <Title order={1} mb="md" style={{ color: colors.BLUE }}>Income Tax Threshold Freeze Extension Impact</Title>
+          <Text mb="md">
+            This tool calculates how extending the freeze on income tax thresholds to 2028/29 and 2029/30 would affect your take-home pay.
+          </Text>
+          <Text mb="xl" fw={500} c={colors.DARK_GRAY}>
+            The UK government has already frozen income tax thresholds until 2027/28. This analysis examines the impact of 
+            potentially extending this freeze for an additional two years.
           </Text>
           
           <Paper withBorder p="xl" shadow="xs" radius="md" mt="xl" bg={colors.BLUE_98}>
@@ -111,7 +117,7 @@ export default function Home() {
               </Tabs.List>
 
               <Tabs.Panel value="income" pt="md">
-                <Title order={3} mb="md" style={{ color: colors.BLUE }}>Your Annual Income</Title>
+                <Title order={3} mb="md" style={{ color: colors.BLUE }}>Your Annual Income (2025)</Title>
                 <NumberInput
                   value={income}
                   onChange={(val) => setIncome(Number(val))}
@@ -153,9 +159,34 @@ export default function Home() {
               <Tabs.Panel value="growth" pt="md">
                 <Title order={3} mb="md" style={{ color: colors.BLUE }}>Wage Growth Assumptions</Title>
                 <Text size="sm" c="dimmed" mb="md">
-                  The freeze on income tax thresholds is particularly impactful when your income rises.
-                  Set your expected wage growth for 2028-2029 below.
+                  The impact of extending the income tax threshold freeze depends on how your income grows.
+                  Set your expected annual wage growth for 2026-2029 below.
                 </Text>
+                
+                <Grid mb="md">
+                  <Grid.Col span={6}>
+                    <NumberInput
+                      value={wageGrowth2026}
+                      onChange={(val) => setWageGrowth2026(Number(val))}
+                      label="2026 Wage Growth (%)"
+                      min={0}
+                      max={20}
+                      step={0.5}
+                      rightSection="%"
+                    />
+                  </Grid.Col>
+                  <Grid.Col span={6}>
+                    <NumberInput
+                      value={wageGrowth2027}
+                      onChange={(val) => setWageGrowth2027(Number(val))}
+                      label="2027 Wage Growth (%)"
+                      min={0}
+                      max={20}
+                      step={0.5}
+                      rightSection="%"
+                    />
+                  </Grid.Col>
+                </Grid>
                 
                 <Grid mb="md">
                   <Grid.Col span={6}>
@@ -183,29 +214,22 @@ export default function Home() {
                 </Grid>
                 
                 <Box mt="md">
-                  <Text fw={500} mb="xs">2028 Wage Growth</Text>
+                  <Text fw={500} mb="xs">2026-2029 Wage Growth</Text>
                   <Slider
-                    value={wageGrowth2028}
-                    onChange={setWageGrowth2028}
+                    value={wageGrowth2028} // We're using 2028 as the default for all years in the slider
+                    onChange={(value) => {
+                      setWageGrowth2026(value);
+                      setWageGrowth2027(value);
+                      setWageGrowth2028(value);
+                      setWageGrowth2029(value);
+                    }}
                     min={0}
                     max={10}
                     step={0.5}
                     label={formatPercentage}
                     mb="xl"
                   />
-                </Box>
-                
-                <Box mt="md">
-                  <Text fw={500} mb="xs">2029 Wage Growth</Text>
-                  <Slider
-                    value={wageGrowth2029}
-                    onChange={setWageGrowth2029}
-                    min={0}
-                    max={10}
-                    step={0.5}
-                    label={formatPercentage}
-                    mb="xl"
-                  />
+                  <Text size="xs" c="dimmed" ta="center">Set the same growth rate for all years</Text>
                 </Box>
               </Tabs.Panel>
             </Tabs>
@@ -232,8 +256,9 @@ export default function Home() {
               <Paper withBorder p="xl" shadow="xs" radius="md">
                 <Title order={3} mb="md" style={{ color: colors.BLUE }}>Impact Summary</Title>
                 <Text size="lg" mb="lg">
-                  With frozen thresholds, from 2023 to 2029 you will lose approximately <strong>{formatGBP(results.total_impact)}</strong> in 
-                  take-home pay compared to if thresholds had been increased with inflation.
+                  By extending the income tax threshold freeze to 2028/29 and 2029/30, you would lose approximately{' '}
+                  <strong>{formatGBP(results.total_impact)}</strong> in take-home pay compared to if thresholds were
+                  adjusted for inflation after 2027/28.
                 </Text>
                 
                 <Accordion mt="xl">
@@ -241,13 +266,13 @@ export default function Home() {
                     <Accordion.Control>
                       <Group>
                         <Text>Your Assumptions</Text>
-                        <Badge color="brand">2023-2029</Badge>
+                        <Badge color="brand">2025-2029</Badge>
                       </Group>
                     </Accordion.Control>
                     <Accordion.Panel>
                       <Stack>
                         <Box>
-                          <Text fw={500}>Base Income (2023):</Text>
+                          <Text fw={500}>Base Income (2025):</Text>
                           <Text>{formatGBP(results.assumptions.base_income)}</Text>
                         </Box>
                         <Divider />
@@ -289,14 +314,14 @@ export default function Home() {
                     <Line 
                       type="monotone" 
                       dataKey="with_freeze" 
-                      name="Net Income (Frozen Thresholds)" 
+                      name="Net Income (Extended Freeze)" 
                       stroke={colors.BLUE} 
                       strokeWidth={2}
                     />
                     <Line 
                       type="monotone" 
                       dataKey="without_freeze" 
-                      name="Net Income (Inflation-Adjusted Thresholds)" 
+                      name="Net Income (No Extension)" 
                       stroke={colors.TEAL_ACCENT} 
                       strokeWidth={2}
                     />
@@ -305,7 +330,7 @@ export default function Home() {
               </Paper>
               
               <Paper withBorder p="xl" shadow="xs" radius="md">
-                <Title order={3} mb="md" style={{ color: colors.BLUE }}>Annual Loss Due to Freeze</Title>
+                <Title order={3} mb="md" style={{ color: colors.BLUE }}>Annual Loss Due to Freeze Extension</Title>
                 <ResponsiveContainer width="100%" height={300}>
                   <LineChart data={results.chart_data}>
                     <CartesianGrid strokeDasharray="3 3" />

@@ -28,8 +28,8 @@ const robotoMono = Roboto_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'UK Income Tax Threshold Freeze Analysis | PolicyEngine',
-  description: 'Analyze how extending the freeze on income tax thresholds could affect your household finances',
+  title: 'Income Tax Threshold Freeze Extension | PolicyEngine',
+  description: 'Analyze how extending the freeze on income tax thresholds to 2028/29 and 2029/30 could affect your household finances',
 };
 
 export default function RootLayout({
