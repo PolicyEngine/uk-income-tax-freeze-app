@@ -1,12 +1,12 @@
 import { createTheme } from '@mantine/core';
 import { colors } from './colors';
-import { fonts } from './fonts';
 
 export const theme = createTheme({
-  fontFamily: fonts.BODY_FONT,
+  fontFamily: 'var(--font-roboto-serif)',
   headings: {
-    fontFamily: fonts.HEADER_FONT,
+    fontFamily: 'var(--font-roboto)',
   },
+  fontFamilyMonospace: 'var(--font-roboto-mono)',
   colors: {
     brand: [
       colors.BLUE_LIGHT,

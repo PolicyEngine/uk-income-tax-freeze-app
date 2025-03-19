@@ -8,20 +8,23 @@ import { theme } from './styles/theme';
 // Font setup
 const roboto = Roboto({ 
   weight: ['400', '500', '700'],
-  subsets: ['latin'], 
-  variable: '--font-roboto' 
+  subsets: ['latin'],
+  display: 'swap', 
+  variable: '--font-roboto',
 });
 
 const robotoSerif = Roboto_Serif({ 
   weight: ['400', '500', '700'],
-  subsets: ['latin'], 
-  variable: '--font-roboto-serif' 
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-roboto-serif',
 });
 
 const robotoMono = Roboto_Mono({ 
   weight: ['400', '500', '700'],
-  subsets: ['latin'], 
-  variable: '--font-roboto-mono' 
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-roboto-mono',
 });
 
 export const metadata: Metadata = {
