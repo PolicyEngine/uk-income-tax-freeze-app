@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, Any
 
 
 class WageGrowthRequest(BaseModel):
@@ -27,3 +27,6 @@ class CalculationResponse(BaseModel):
     chart_data: List[Dict[str, Union[int, float]]]
     total_impact: float
     assumptions: Dict[str, Union[float, Dict[str, float]]]
+    tax_parameters: Dict[str, Any] = Field(
+        description="Information about tax parameters in each scenario"
+    )

@@ -22,9 +22,12 @@ import {
   Image,
   Paper,
   Flex,
+  Table,
+  Tooltip,
+  Switch,
 } from '@mantine/core';
 import axios from 'axios';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts';
 import { colors } from './styles/colors';
 
 type IncomeType = 'employment_income' | 'self_employment_income' | 'pension_income' | 'dividend_income';
@@ -39,6 +42,7 @@ export default function Home() {
   const [results, setResults] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [useOBRGrowth, setUseOBRGrowth] = useState(true);
   
   const calculateImpact = async () => {
     try {
@@ -51,7 +55,7 @@ export default function Home() {
       
       const response = await axios.post('/api/calculate', { 
         income,
-        wage_growth: {
+        wage_growth: useOBRGrowth ? {} : {
           "2026": wageGrowth2026 / 100,
           "2027": wageGrowth2027 / 100,
           "2028": wageGrowth2028 / 100,
@@ -61,6 +65,14 @@ export default function Home() {
       });
       
       setResults(response.data);
+
+      // If using OBR projections, update the displayed growth values
+      if (useOBRGrowth && response.data.assumptions.obr_earnings_growth) {
+        setWageGrowth2026(Number(response.data.assumptions.obr_earnings_growth["2026"]) * 100);
+        setWageGrowth2027(Number(response.data.assumptions.obr_earnings_growth["2027"]) * 100);
+        setWageGrowth2028(Number(response.data.assumptions.obr_earnings_growth["2028"]) * 100);
+        setWageGrowth2029(Number(response.data.assumptions.obr_earnings_growth["2029"]) * 100);
+      }
     } catch (err) {
       console.error('Error calculating impact:', err);
       setError('Failed to calculate impact. Please try again.');
@@ -162,6 +174,20 @@ export default function Home() {
                   The impact of extending the income tax threshold freeze depends on how your income grows.
                   Set your expected annual wage growth for 2026-2029 below.
                 </Text>
+
+                <Flex align="center" mb="md">
+                  <Switch 
+                    checked={useOBRGrowth}
+                    onChange={(event) => setUseOBRGrowth(event.currentTarget.checked)}
+                    label="Use OBR earnings growth forecasts"
+                    mr="md"
+                  />
+                  <Tooltip label="The Office for Budget Responsibility (OBR) publishes official forecasts for earnings growth">
+                    <Text size="xs" c="dimmed" style={{ cursor: 'help' }}>
+                      What's this?
+                    </Text>
+                  </Tooltip>
+                </Flex>
                 
                 <Grid mb="md">
                   <Grid.Col span={6}>
@@ -173,6 +199,7 @@ export default function Home() {
                       max={20}
                       step={0.5}
                       rightSection="%"
+                      disabled={useOBRGrowth}
                     />
                   </Grid.Col>
                   <Grid.Col span={6}>
@@ -184,6 +211,7 @@ export default function Home() {
                       max={20}
                       step={0.5}
                       rightSection="%"
+                      disabled={useOBRGrowth}
                     />
                   </Grid.Col>
                 </Grid>
@@ -198,6 +226,7 @@ export default function Home() {
                       max={20}
                       step={0.5}
                       rightSection="%"
+                      disabled={useOBRGrowth}
                     />
                   </Grid.Col>
                   <Grid.Col span={6}>
@@ -209,28 +238,31 @@ export default function Home() {
                       max={20}
                       step={0.5}
                       rightSection="%"
+                      disabled={useOBRGrowth}
                     />
                   </Grid.Col>
                 </Grid>
                 
-                <Box mt="md">
-                  <Text fw={500} mb="xs">2026-2029 Wage Growth</Text>
-                  <Slider
-                    value={wageGrowth2028} // We're using 2028 as the default for all years in the slider
-                    onChange={(value) => {
-                      setWageGrowth2026(value);
-                      setWageGrowth2027(value);
-                      setWageGrowth2028(value);
-                      setWageGrowth2029(value);
-                    }}
-                    min={0}
-                    max={10}
-                    step={0.5}
-                    label={formatPercentage}
-                    mb="xl"
-                  />
-                  <Text size="xs" c="dimmed" ta="center">Set the same growth rate for all years</Text>
-                </Box>
+                {!useOBRGrowth && (
+                  <Box mt="md">
+                    <Text fw={500} mb="xs">2026-2029 Wage Growth</Text>
+                    <Slider
+                      value={wageGrowth2028} // We're using 2028 as the default for all years in the slider
+                      onChange={(value) => {
+                        setWageGrowth2026(value);
+                        setWageGrowth2027(value);
+                        setWageGrowth2028(value);
+                        setWageGrowth2029(value);
+                      }}
+                      min={0}
+                      max={10}
+                      step={0.5}
+                      label={formatPercentage}
+                      mb="xl"
+                    />
+                    <Text size="xs" c="dimmed" ta="center">Set the same growth rate for all years</Text>
+                  </Box>
+                )}
               </Tabs.Panel>
             </Tabs>
             
@@ -294,6 +326,65 @@ export default function Home() {
                       </Stack>
                     </Accordion.Panel>
                   </Accordion.Item>
+                  
+                  <Accordion.Item value="tax_parameters">
+                    <Accordion.Control>
+                      <Group>
+                        <Text>Income Tax Parameters</Text>
+                        <Badge color="accent">Compare scenarios</Badge>
+                      </Group>
+                    </Accordion.Control>
+                    <Accordion.Panel>
+                      <Title order={4} mb="md">Personal Allowance</Title>
+                      <Table>
+                        <Table.Thead>
+                          <Table.Tr>
+                            <Table.Th>Year</Table.Th>
+                            <Table.Th>No Extension (£)</Table.Th>
+                            <Table.Th>With Extension (£)</Table.Th>
+                            <Table.Th>Difference (£)</Table.Th>
+                          </Table.Tr>
+                        </Table.Thead>
+                        <Table.Tbody>
+                          {Object.entries(results.tax_parameters.baseline.personal_allowance).map(([year, value]) => (
+                            <Table.Tr key={year}>
+                              <Table.Td>{year}</Table.Td>
+                              <Table.Td>{value.toLocaleString()}</Table.Td>
+                              <Table.Td>{results.tax_parameters.reform.personal_allowance[year].toLocaleString()}</Table.Td>
+                              <Table.Td>{(Number(value) - Number(results.tax_parameters.reform.personal_allowance[year])).toLocaleString()}</Table.Td>
+                            </Table.Tr>
+                          ))}
+                        </Table.Tbody>
+                      </Table>
+
+                      <Title order={4} mt="xl" mb="md">Higher Rate Threshold</Title>
+                      <Table>
+                        <Table.Thead>
+                          <Table.Tr>
+                            <Table.Th>Year</Table.Th>
+                            <Table.Th>No Extension (£)</Table.Th>
+                            <Table.Th>With Extension (£)</Table.Th>
+                            <Table.Th>Difference (£)</Table.Th>
+                          </Table.Tr>
+                        </Table.Thead>
+                        <Table.Tbody>
+                          {Object.entries(results.tax_parameters.baseline.higher_rate_threshold).map(([year, value]) => (
+                            <Table.Tr key={year}>
+                              <Table.Td>{year}</Table.Td>
+                              <Table.Td>{value.toLocaleString()}</Table.Td>
+                              <Table.Td>{results.tax_parameters.reform.higher_rate_threshold[year].toLocaleString()}</Table.Td>
+                              <Table.Td>{(Number(value) - Number(results.tax_parameters.reform.higher_rate_threshold[year])).toLocaleString()}</Table.Td>
+                            </Table.Tr>
+                          ))}
+                        </Table.Tbody>
+                      </Table>
+                      
+                      <Text size="xs" c="dimmed" mt="md">
+                        Note: Current tax rates are {results.tax_parameters.current.basic_rate * 100}% (basic), {results.tax_parameters.current.higher_rate * 100}% (higher), 
+                        and {results.tax_parameters.current.additional_rate * 100}% (additional). These remain unchanged in both scenarios.
+                      </Text>
+                    </Accordion.Panel>
+                  </Accordion.Item>
                 </Accordion>
               </Paper>
               
@@ -306,7 +397,7 @@ export default function Home() {
                     <YAxis 
                       tickFormatter={(value) => formatGBP(value)}
                     />
-                    <Tooltip 
+                    <RechartsTooltip 
                       formatter={(value: number) => formatGBP(value)}
                       labelFormatter={(label) => `Year: ${label}`}
                     />
@@ -317,6 +408,7 @@ export default function Home() {
                       name="Net Income (Extended Freeze)" 
                       stroke={colors.BLUE} 
                       strokeWidth={2}
+                      activeDot={{ r: 8 }}
                     />
                     <Line 
                       type="monotone" 
@@ -324,9 +416,16 @@ export default function Home() {
                       name="Net Income (No Extension)" 
                       stroke={colors.TEAL_ACCENT} 
                       strokeWidth={2}
+                      activeDot={{ r: 8 }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
+                <Box my="md" p="md" style={{ backgroundColor: colors.BLUE_98 }} radius="md">
+                  <Text size="sm">
+                    <strong>Note:</strong> Income tax thresholds are already frozen until 2027/28. The difference between the scenarios
+                    only appears from 2028 onwards, when the extension would take effect.
+                  </Text>
+                </Box>
               </Paper>
               
               <Paper withBorder p="xl" shadow="xs" radius="md">
@@ -338,7 +437,7 @@ export default function Home() {
                     <YAxis 
                       tickFormatter={(value) => formatGBP(value)}
                     />
-                    <Tooltip 
+                    <RechartsTooltip 
                       formatter={(value: number) => formatGBP(value)}
                       labelFormatter={(label) => `Year: ${label}`}
                     />
@@ -349,6 +448,7 @@ export default function Home() {
                       name="Annual Loss" 
                       stroke={colors.DARK_RED} 
                       strokeWidth={2}
+                      activeDot={{ r: 8 }}
                     />
                   </LineChart>
                 </ResponsiveContainer>

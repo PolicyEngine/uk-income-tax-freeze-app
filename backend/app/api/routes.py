@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from .models import WageGrowthRequest, CalculationResponse
-from .calculator import calculate_impact_over_years
+from .calculator import calculate_impact_over_years, get_projected_thresholds, OBR_EARNINGS_GROWTH, CURRENT_PARAMETERS
 from typing import Dict, List, Union
 
 router = APIRouter(prefix="/api")
@@ -24,6 +24,9 @@ async def calculate_impact(request: WageGrowthRequest):
             wage_growth=request.wage_growth,
             income_types=request.income_types
         )
+        
+        # Get projected thresholds for both scenarios
+        baseline_thresholds, reform_thresholds = get_projected_thresholds()
         
         with_freeze_results = results["with_freeze"]
         without_freeze_results = results["without_freeze"]
@@ -49,6 +52,27 @@ async def calculate_impact(request: WageGrowthRequest):
             for year in range(2028, 2030)
         )
         
+        # Fill in any missing wage growth values with OBR projections
+        complete_wage_growth = {}
+        for year in range(2026, 2030):
+            year_str = str(year)
+            complete_wage_growth[year_str] = request.wage_growth.get(
+                year_str, OBR_EARNINGS_GROWTH.get(year_str, 0.02)
+            )
+            
+        # Format tax parameters for response
+        tax_parameters = {
+            "current": CURRENT_PARAMETERS,
+            "baseline": {
+                param: {str(year): value for year, value in years.items()}
+                for param, years in baseline_thresholds.items()
+            },
+            "reform": {
+                param: {str(year): value for year, value in years.items()}
+                for param, years in reform_thresholds.items()
+            }
+        }
+        
         return CalculationResponse(
             with_freeze=with_freeze_str_keys,
             without_freeze=without_freeze_str_keys,
@@ -56,9 +80,11 @@ async def calculate_impact(request: WageGrowthRequest):
             total_impact=total_impact,
             assumptions={
                 "base_income": request.income,
-                "wage_growth": request.wage_growth,
-                "income_types": request.income_types
-            }
+                "wage_growth": complete_wage_growth,
+                "income_types": request.income_types,
+                "obr_earnings_growth": {str(k): v for k, v in OBR_EARNINGS_GROWTH.items()}
+            },
+            tax_parameters=tax_parameters
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
