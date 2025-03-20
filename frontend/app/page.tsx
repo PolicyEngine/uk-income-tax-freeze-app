@@ -400,7 +400,7 @@ export default function Home() {
                       min={0}
                       max={20}
                       step={0.1}
-                      precision={2}
+                      decimalScale={2}
                       rightSection="%"
                       disabled={useOBRGrowth}
                       styles={useOBRGrowth ? { input: { backgroundColor: colors.BLUE_98 } } : {}}
@@ -414,7 +414,7 @@ export default function Home() {
                       min={0}
                       max={20}
                       step={0.1}
-                      precision={2}
+                      decimalScale={2}
                       rightSection="%"
                       disabled={useOBRGrowth}
                       styles={useOBRGrowth ? { input: { backgroundColor: colors.BLUE_98 } } : {}}
@@ -431,7 +431,7 @@ export default function Home() {
                       min={0}
                       max={20}
                       step={0.1}
-                      precision={2}
+                      decimalScale={2}
                       rightSection="%"
                       disabled={useOBRGrowth}
                       styles={useOBRGrowth ? { input: { backgroundColor: colors.BLUE_98 } } : {}}
@@ -445,7 +445,7 @@ export default function Home() {
                       min={0}
                       max={20}
                       step={0.1}
-                      precision={2}
+                      decimalScale={2}
                       rightSection="%"
                       disabled={useOBRGrowth}
                       styles={useOBRGrowth ? { input: { backgroundColor: colors.BLUE_98 } } : {}}
