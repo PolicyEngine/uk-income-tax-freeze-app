@@ -46,3 +46,10 @@ wheels/
 # Next.js
 .vercel
 next-env.d.ts
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+.terraform.lock.hcl

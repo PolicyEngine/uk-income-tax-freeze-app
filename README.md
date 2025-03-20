@@ -6,6 +6,8 @@ An interactive application to analyze the impact of extending the freeze on inco
 
 - `/frontend`: Next.js application with interactive UI
 - `/backend`: FastAPI application using PolicyEngine UK for tax calculations
+- `/terraform`: Infrastructure as Code files for Google Cloud deployment
+- `/.github/workflows`: CI/CD pipelines for testing, building, and deploying
 
 ## Getting Started
 
@@ -78,6 +80,28 @@ npm run dev
 - FastAPI
 - PolicyEngine UK for tax calculations
 - Python with type hints
+
+## Deployment
+
+This project uses GitHub Actions for CI/CD and deploys to Google Cloud Run:
+
+1. Push changes to the `main` branch to trigger the build and deploy workflow
+2. The workflow will:
+   - Run backend tests and linting
+   - Build the frontend (Next.js static export)
+   - Build a Docker image with the backend and frontend static files
+   - Push the image to Google Container Registry
+   - Deploy the application to Google Cloud Run using Terraform
+
+### Prerequisites for Deployment
+
+- Google Cloud Project
+- Service account with necessary permissions
+- GitHub repository secrets:
+  - `GCP_PROJECT_ID`: Your Google Cloud Project ID
+  - `WORKLOAD_IDENTITY_PROVIDER`: The Workload Identity Federation provider
+  - `SERVICE_ACCOUNT`: The service account email to use for deployments
+- Google Cloud Storage bucket for Terraform state (update the bucket name in `terraform/main.tf`)
 
 ## License
 

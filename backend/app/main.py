@@ -1,5 +1,8 @@
-from fastapi import FastAPI
+import os
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from .api.routes import router as api_router
 
 app = FastAPI(
@@ -27,3 +30,16 @@ async def health_check():
     Simple health check endpoint.
     """
     return {"status": "ok"}
+
+
+# Serve static files in production
+static_dir = os.environ.get("STATIC_DIR", "static")
+if os.path.exists(static_dir):
+    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+    
+    @app.exception_handler(404)
+    async def custom_404_handler(request: Request, exc):
+        """
+        Serve index.html for all other routes to support SPA routing
+        """
+        return FileResponse(f"{static_dir}/index.html")
