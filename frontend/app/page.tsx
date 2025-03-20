@@ -572,14 +572,14 @@ export default function Home() {
                             data={[{
                               percentile: userPercentilePosition,
                               absolute_difference: userImpactAmount / 2, // Split over 2 years
-                              percentage_change: 0 // Not used
+                              percentage_change: 0, // Not used
+                              z: 120 // Use z for size
                             }]} 
                             fill={colors.BLUE}
                             stroke={colors.BLUE}
                             strokeWidth={2}
                             shape="circle"
                             legendType="circle"
-                            size={120}
                           />
                         </>
                       )}
@@ -588,7 +588,7 @@ export default function Home() {
                   
                   {/* Removed custom SVG overlay */}
                 </div>
-                <Box my="md" p="md" style={{ backgroundColor: colors.BLUE_98 }} radius="md">
+                <Box my="md" p="md" style={{ backgroundColor: colors.BLUE_98, borderRadius: '8px' }}>
                   <Text size="sm">
                     <strong>Note:</strong> This chart shows data for a representative sample of UK households.
                     Values represent income losses in pounds over the combined period 2028-2029. The horizontal
@@ -669,14 +669,21 @@ export default function Home() {
                           </Table.Tr>
                         </Table.Thead>
                         <Table.Tbody>
-                          {Object.entries(results.tax_parameters.baseline.personal_allowance).map(([year, value]) => (
-                            <Table.Tr key={year}>
-                              <Table.Td>{year}</Table.Td>
-                              <Table.Td>{value.toLocaleString()}</Table.Td>
-                              <Table.Td>{results.tax_parameters.reform.personal_allowance[year].toLocaleString()}</Table.Td>
-                              <Table.Td>{(Number(value) - Number(results.tax_parameters.reform.personal_allowance[year])).toLocaleString()}</Table.Td>
-                            </Table.Tr>
-                          ))}
+                          {Object.entries(results.tax_parameters.baseline.personal_allowance).map(([year, value]) => {
+                            // Explicitly cast values to number to handle TypeScript type checking
+                            const baselineValue = Number(value);
+                            const reformValue = Number(results.tax_parameters.reform.personal_allowance[year]);
+                            const difference = baselineValue - reformValue;
+                            
+                            return (
+                              <Table.Tr key={year}>
+                                <Table.Td>{year}</Table.Td>
+                                <Table.Td>{baselineValue.toLocaleString()}</Table.Td>
+                                <Table.Td>{reformValue.toLocaleString()}</Table.Td>
+                                <Table.Td>{difference.toLocaleString()}</Table.Td>
+                              </Table.Tr>
+                            );
+                          })}
                         </Table.Tbody>
                       </Table>
 
@@ -691,14 +698,21 @@ export default function Home() {
                           </Table.Tr>
                         </Table.Thead>
                         <Table.Tbody>
-                          {Object.entries(results.tax_parameters.baseline.higher_rate_threshold).map(([year, value]) => (
-                            <Table.Tr key={year}>
-                              <Table.Td>{year}</Table.Td>
-                              <Table.Td>{value.toLocaleString()}</Table.Td>
-                              <Table.Td>{results.tax_parameters.reform.higher_rate_threshold[year].toLocaleString()}</Table.Td>
-                              <Table.Td>{(Number(value) - Number(results.tax_parameters.reform.higher_rate_threshold[year])).toLocaleString()}</Table.Td>
-                            </Table.Tr>
-                          ))}
+                          {Object.entries(results.tax_parameters.baseline.higher_rate_threshold).map(([year, value]) => {
+                            // Explicitly cast values to number to handle TypeScript type checking
+                            const baselineValue = Number(value);
+                            const reformValue = Number(results.tax_parameters.reform.higher_rate_threshold[year]);
+                            const difference = baselineValue - reformValue;
+                            
+                            return (
+                              <Table.Tr key={year}>
+                                <Table.Td>{year}</Table.Td>
+                                <Table.Td>{baselineValue.toLocaleString()}</Table.Td>
+                                <Table.Td>{reformValue.toLocaleString()}</Table.Td>
+                                <Table.Td>{difference.toLocaleString()}</Table.Td>
+                              </Table.Tr>
+                            );
+                          })}
                         </Table.Tbody>
                       </Table>
                       
@@ -743,7 +757,7 @@ export default function Home() {
                     />
                   </LineChart>
                 </ResponsiveContainer>
-                <Box my="md" p="md" style={{ backgroundColor: colors.BLUE_98 }} radius="md">
+                <Box my="md" p="md" style={{ backgroundColor: colors.BLUE_98, borderRadius: '8px' }}>
                   <Text size="sm">
                     <strong>Note:</strong> Income tax thresholds are already frozen until 2027/28. The difference between the scenarios
                     only appears from 2028 onwards, when the extension would take effect.

@@ -3,17 +3,9 @@ const nextConfig = {
   reactStrictMode: true,
   output: 'export',  // Enable static HTML export
   distDir: 'out',    // Output directory
-  // Rewrites are only used in development
-  async rewrites() {
-    return process.env.NODE_ENV === 'development' 
-      ? [
-          {
-            source: '/api/:path*',
-            destination: 'http://localhost:8000/api/:path*',
-          },
-        ]
-      : [];
-  },
+  
+  // We need to disable rewrites in production with static export
+  // The API calls will be handled by the FastAPI backend serving the static files
 };
 
 module.exports = nextConfig;
