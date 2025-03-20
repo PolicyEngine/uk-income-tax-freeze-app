@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Container, 
   Title, 
@@ -80,7 +80,11 @@ export default function Home() {
   const [newIncomeType, setNewIncomeType] = useState<IncomeType>('employment_income');
   const [percentileData, setPercentileData] = useState<any>(null);
   const [loadingPercentileData, setLoadingPercentileData] = useState(false);
-  const [showAbsoluteValues, setShowAbsoluteValues] = useState(false);
+  const [userPercentilePosition, setUserPercentilePosition] = useState<number | null>(null);
+  const [userImpactAmount, setUserImpactAmount] = useState<number | null>(null);
+  
+  // Ref for scrolling to the impact chart section
+  const chartRef = React.useRef<HTMLDivElement>(null);
   
   const calculateImpact = async () => {
     try {
@@ -110,6 +114,32 @@ export default function Home() {
         setWageGrowth2028(parseFloat((obrData["2028"] * 100).toFixed(2)));
         setWageGrowth2029(parseFloat((obrData["2029"] * 100).toFixed(2)));
       }
+      
+      // Calculate the user's position on the income scale (approx. percentile)
+      // This is a simple approximation based on their net income
+      const totalIncome = incomes.reduce((sum, income) => sum + income.amount, 0);
+      // Using a simplified formula to estimate percentile (actual distribution would be more complex)
+      // Roughly calibrated based on UK income distribution
+      let estimatedPercentile;
+      if (totalIncome < 15000) {
+        estimatedPercentile = (totalIncome / 15000) * 25; // Bottom 25%
+      } else if (totalIncome < 30000) {
+        estimatedPercentile = 25 + ((totalIncome - 15000) / 15000) * 25; // 25-50%
+      } else if (totalIncome < 60000) {
+        estimatedPercentile = 50 + ((totalIncome - 30000) / 30000) * 30; // 50-80%
+      } else {
+        estimatedPercentile = 80 + Math.min(((totalIncome - 60000) / 140000) * 20, 19.9); // 80-100%
+      }
+      
+      setUserPercentilePosition(Math.min(Math.max(estimatedPercentile, 1), 99));
+      setUserImpactAmount(response.data.total_impact);
+      
+      // After calculation is complete, scroll to the chart
+      setTimeout(() => {
+        if (chartRef.current) {
+          chartRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 300);
     } catch (err) {
       console.error('Error calculating impact:', err);
       setError('Failed to calculate impact. Please try again.');
@@ -176,6 +206,8 @@ export default function Home() {
   useEffect(() => {
     fetchPercentileData();
   }, []);
+  
+  // No marker positioning needed anymore
 
   return (
     <AppShell 
@@ -461,7 +493,7 @@ export default function Home() {
             </Paper>
           )}
           
-          <Paper withBorder p="xl" shadow="xs" radius="md" mt="xl">
+          <Paper withBorder p="xl" shadow="xs" radius="md" mt="xl" ref={chartRef}>
             <Title order={3} mb="md" style={{ color: colors.BLUE }}>Impact across income distribution</Title>
             {loadingPercentileData ? (
               <Flex justify="center" align="center" h={300}>
@@ -469,89 +501,101 @@ export default function Home() {
               </Flex>
             ) : percentileData ? (
               <>
-                <Flex align="center" justify="space-between" mb="lg">
-                  <Text size="sm" c="dimmed">
-                    This chart shows how the income tax threshold freeze extension affects households 
-                    across different income levels. Each point represents a household, with their 
-                    position on the income distribution (percentile) and their loss.
-                  </Text>
-                  <Flex align="center" gap="md">
-                    <Text size="sm">% of income</Text>
-                    <Switch 
-                      checked={showAbsoluteValues}
-                      onChange={(event) => setShowAbsoluteValues(event.currentTarget.checked)}
-                    />
-                    <Text size="sm">£ amount</Text>
-                  </Flex>
-                </Flex>
-                <ResponsiveContainer width="100%" height={400}>
-                  <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 60 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      type="number" 
-                      dataKey="percentile" 
-                      name="Income Percentile" 
-                      label={{ value: 'Income Percentile', position: 'bottom', offset: 5 }}
-                      domain={[0, 100]}
-                    />
-                    <YAxis 
-                      type="number" 
-                      dataKey={showAbsoluteValues ? "absolute_difference" : "percentage_change"}
-                      name={showAbsoluteValues ? "Income Loss (£)" : "Income Loss (%)"}
-                      label={{ 
-                        value: showAbsoluteValues ? 'Income Loss (£)' : 'Income Loss (%)', 
-                        angle: -90, 
-                        position: 'insideLeft' 
-                      }}
-                      tickFormatter={(value) => showAbsoluteValues ? `£${Math.round(value).toLocaleString()}` : `${value.toFixed(1)}%`}
-                    />
-                    {/* All dots same size, no ZAxis needed */}
-                    <RechartsTooltip 
-                      cursor={{ strokeDasharray: '3 3' }}
-                      formatter={(value: any, name: string) => {
-                        if (name === 'Income Percentile') return `${value.toFixed(1)}`;
-                        if (name === 'Income Loss (%)') return `${value.toFixed(2)}%`;
-                        if (name === 'Income Loss (£)') return formatGBP(value);
-                        return value;
-                      }}
-                      content={({ active, payload }) => {
-                        if (active && payload && payload.length) {
-                          return (
-                            <div style={{ backgroundColor: 'white', padding: '10px', border: '1px solid #ccc', borderRadius: '5px' }}>
-                              <p><strong>Income percentile:</strong> {payload[0].payload.percentile.toFixed(1)}</p>
-                              <p><strong>Income loss:</strong> {
-                                showAbsoluteValues ? 
-                                formatGBP(payload[0].payload.absolute_difference) : 
-                                `${payload[0].payload.percentage_change.toFixed(2)}%`
-                              }</p>
-                              <p><strong>{showAbsoluteValues ? "As percentage:" : "In pounds:"}</strong> {
-                                !showAbsoluteValues ? 
-                                formatGBP(payload[0].payload.absolute_difference) : 
-                                `${payload[0].payload.percentage_change.toFixed(2)}%`
-                              }</p>
-                            </div>
-                          );
-                        }
-                        return null;
-                      }}
-                    />
-                    <Scatter 
-                      name="Households" 
-                      data={percentileData.scatter_data} 
-                      fill={colors.BLUE}
-                      opacity={0.7}
-                      shape="circle"
-                      legendType="circle"
-                      isAnimationActive={false}
-                    />
-                    <ReferenceArea y1={0} y2={0.1} strokeOpacity={0.3} />
-                  </ScatterChart>
-                </ResponsiveContainer>
+                <Text size="sm" c="dimmed" mb="lg">
+                  This chart shows how the income tax threshold freeze extension affects households 
+                  across different income levels. Each point represents a household, with their 
+                  position in the disposable income distribution (before housing costs) and their loss in pounds.
+                </Text>
+                <div style={{ width: '100%', height: '400px' }}>
+                  <ResponsiveContainer width="100%" height={400}>
+                    <ScatterChart margin={{ top: 20, right: 20, bottom: 40, left: 100 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis 
+                        type="number" 
+                        dataKey="percentile" 
+                        name="Income Percentile" 
+                        label={{ value: 'Disposable Income Percentile', position: 'insideBottom', offset: -10 }}
+                        domain={[0, 100]}
+                        padding={{ left: 10, right: 10 }}
+                      />
+                      <YAxis 
+                        type="number" 
+                        dataKey="absolute_difference"
+                        name="Income Loss (£)"
+                        label={{ 
+                          value: 'Income Loss (£)', 
+                          angle: -90, 
+                          position: 'insideLeft',
+                          offset: -15
+                        }}
+                        padding={{ top: 20 }}
+                        tickFormatter={(value) => `£${Math.round(value).toLocaleString()}`}
+                        width={90}
+                      />
+                      {/* All dots same size, no ZAxis needed */}
+                      <RechartsTooltip 
+                        cursor={{ strokeDasharray: '3 3' }}
+                        formatter={(value: any, name: string) => {
+                          if (name === 'Income Percentile') return `${value.toFixed(1)}`;
+                          if (name === 'Income Loss (£)') return formatGBP(value);
+                          return value;
+                        }}
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            return (
+                              <div style={{ backgroundColor: 'white', padding: '10px', border: '1px solid #ccc', borderRadius: '5px' }}>
+                                <p><strong>Disposable income percentile:</strong> {payload[0].payload.percentile.toFixed(1)}</p>
+                                <p><strong>Income loss:</strong> {formatGBP(payload[0].payload.absolute_difference)}</p>
+                                <p><strong>As percentage:</strong> {`${payload[0].payload.percentage_change.toFixed(2)}%`}</p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Scatter 
+                        name="Households" 
+                        data={percentileData.scatter_data} 
+                        fill={colors.DARK_GRAY}
+                        opacity={0.5}
+                        shape="circle"
+                        legendType="circle"
+                        isAnimationActive={false}
+                      />
+                      
+                      {/* User's position on the chart */}
+                      {results && userPercentilePosition !== null && userImpactAmount !== null && (
+                        <>
+                          {/* Red circle marking the position */}
+                          <Scatter 
+                            name="Your Household" 
+                            data={[{
+                              percentile: userPercentilePosition,
+                              absolute_difference: userImpactAmount / 2, // Split over 2 years
+                              percentage_change: 0 // Not used
+                            }]} 
+                            fill={colors.BLUE}
+                            stroke={colors.BLUE}
+                            strokeWidth={2}
+                            shape="circle"
+                            legendType="circle"
+                            size={120}
+                          />
+                        </>
+                      )}
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                  
+                  {/* Removed custom SVG overlay */}
+                </div>
                 <Box my="md" p="md" style={{ backgroundColor: colors.BLUE_98 }} radius="md">
                   <Text size="sm">
                     <strong>Note:</strong> This chart shows data for a representative sample of UK households.
-                    Values represent income losses over the combined period 2028-2029, with the toggle above 
-                    allowing you to switch between percentage of income and absolute pound amounts.
+                    Values represent income losses in pounds over the combined period 2028-2029. The horizontal
+                    axis shows percentiles of disposable income before housing costs.
+                    {results && userPercentilePosition !== null && userImpactAmount !== null && (
+                      <span> Your household is shown as a <span style={{ color: colors.BLUE }}>blue circle</span> on the chart, losing approximately {formatGBP(userImpactAmount)}.</span>
+                    )}
                   </Text>
                 </Box>
               </>
