@@ -14,3 +14,9 @@ variable "container_tag" {
   type        = string
   default     = "latest"
 }
+
+variable "hugging_face_token" {
+  description = "The Hugging Face API token"
+  type        = string
+  sensitive   = true
+}

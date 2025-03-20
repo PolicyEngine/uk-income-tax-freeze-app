@@ -101,6 +101,7 @@ This project uses GitHub Actions for CI/CD and deploys to Google Cloud Run:
   - `GCP_PROJECT_ID`: Your Google Cloud Project ID
   - `WORKLOAD_IDENTITY_PROVIDER`: The Workload Identity Federation provider
   - `SERVICE_ACCOUNT`: The service account email to use for deployments
+  - `HUGGING_FACE_TOKEN`: Your Hugging Face API token
 - Google Cloud Storage bucket for Terraform state (update the bucket name in `terraform/main.tf`)
 
 ## License

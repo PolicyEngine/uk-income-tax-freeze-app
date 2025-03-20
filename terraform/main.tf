@@ -45,6 +45,11 @@ resource "google_cloud_run_service" "app" {
       containers {
         image = "gcr.io/${var.project_id}/uk-income-tax-freeze-app:${var.container_tag}"
         
+        env {
+          name  = "HUGGING_FACE_TOKEN"
+          value = var.hugging_face_token
+        }
+        
         resources {
           limits = {
             cpu    = "1"
