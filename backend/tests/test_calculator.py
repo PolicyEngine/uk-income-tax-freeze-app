@@ -1,4 +1,3 @@
-import pytest
 from app.api.calculator import calculate_impact_over_years
 
 

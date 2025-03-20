@@ -1,13 +1,13 @@
 from fastapi import APIRouter, HTTPException
-from .models import WageGrowthRequest, CalculationResponse, PercentileImpactResponse
+
 from .calculator import (
-    calculate_impact_over_years, 
-    get_projected_thresholds, 
+    CURRENT_PARAMETERS,
+    OBR_EARNINGS_GROWTH,
+    calculate_impact_over_years,
     get_income_percentile_impact_data,
-    OBR_EARNINGS_GROWTH, 
-    CURRENT_PARAMETERS
+    get_projected_thresholds,
 )
-from typing import Dict, List, Union
+from .models import CalculationResponse, PercentileImpactResponse, WageGrowthRequest
 
 router = APIRouter(prefix="/api")
 
@@ -60,7 +60,8 @@ async def calculate_impact(request: WageGrowthRequest):
             for year in range(2028, 2030)
         )
         
-        # Fill in wage growth values - use OBR if empty dict was passed or fall back to custom values
+        # Fill in wage growth values - use OBR if empty dict was passed or fall back to 
+        # custom values
         complete_wage_growth = {}
         for year in range(2026, 2030):
             year_str = str(year)

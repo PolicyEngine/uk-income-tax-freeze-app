@@ -1,8 +1,9 @@
-from policyengine_uk import Simulation, CountryTaxBenefitSystem, Microsimulation
-from policyengine_core.reforms import Reform
-from typing import Dict, List, Union, Tuple, Any
-import pandas as pd
+from typing import Dict, List, Tuple, Union
+
 import numpy as np
+import pandas as pd
+from policyengine_core.reforms import Reform
+from policyengine_uk import CountryTaxBenefitSystem, Microsimulation, Simulation
 
 # OBR earnings growth projections (March 2024)
 OBR_EARNINGS_GROWTH = {
@@ -62,23 +63,41 @@ baseline_microsimulation = Microsimulation(dataset="hf://policyengine/policyengi
 reform_microsimulation = Microsimulation(reform=FREEZE_REFORM, dataset="hf://policyengine/policyengine-uk-data/enhanced_frs_2022_23.h5")
 
 baseline_population_df_2028 = baseline_microsimulation.calculate_dataframe(VARIABLES[1:], 2028)
-selected_households = np.random.choice(baseline_population_df_2028.household_id.values, 1000, replace=False, p=baseline_population_df_2028.household_weight.values / baseline_population_df_2028.household_weight.values.sum())
+# Calculate selection probability
+household_weights = baseline_population_df_2028.household_weight.values
+selection_probs = household_weights / household_weights.sum()
+
+# Select households
+selected_households = np.random.choice(
+    baseline_population_df_2028.household_id.values, 
+    1000, 
+    replace=False, 
+    p=selection_probs
+)
 reform_population_df_2028 = reform_microsimulation.calculate_dataframe(VARIABLES[1:], 2028)
 
 baseline_population_df_2029 = baseline_microsimulation.calculate_dataframe(VARIABLES[1:], 2029)
 reform_population_df_2029 = reform_microsimulation.calculate_dataframe(VARIABLES[1:], 2029)
 
-baseline_population_df_2028 = baseline_population_df_2028.set_index("household_id").loc[selected_households].reset_index()
-reform_population_df_2028 = reform_population_df_2028.set_index("household_id").loc[selected_households].reset_index()
-baseline_population_df_2029 = baseline_population_df_2029.set_index("household_id").loc[selected_households].reset_index()
-reform_population_df_2029 = reform_population_df_2029.set_index("household_id").loc[selected_households].reset_index()
+# Filter dataframes to selected households
+def filter_to_selected(df, household_selection):
+    return df.set_index("household_id").loc[household_selection].reset_index()
 
-def calculate_household_df(household: dict, year: int, freeze_thresholds: bool = False) -> pd.DataFrame:
+baseline_population_df_2028 = filter_to_selected(baseline_population_df_2028, selected_households)
+reform_population_df_2028 = filter_to_selected(reform_population_df_2028, selected_households)
+baseline_population_df_2029 = filter_to_selected(baseline_population_df_2029, selected_households)
+reform_population_df_2029 = filter_to_selected(reform_population_df_2029, selected_households)
+
+def calculate_household_df(
+    household: dict, year: int, freeze_thresholds: bool = False
+) -> pd.DataFrame:
     """
-    From an OpenFisca-style household dictionary, year, and reform policy, return a dataframe with a row for each person
-    and a column for relevant variables.
+    From an OpenFisca-style household dictionary, year, and reform policy.
+
+    Returns a dataframe with a row for each person and a column for relevant variables.
     """
-    simulation = Simulation(situation=household, tax_benefit_system=reform_system if freeze_thresholds else baseline_system)
+    tax_system = reform_system if freeze_thresholds else baseline_system
+    simulation = Simulation(situation=household, tax_benefit_system=tax_system)
     
     result = simulation.calculate_dataframe(VARIABLES, year)
 
@@ -117,7 +136,9 @@ def build_household(
             if not wage_growth:  # Empty dict = use OBR projections
                 growth_rate = OBR_EARNINGS_GROWTH.get(str(growth_year), 0.02)
             else:
-                growth_rate = wage_growth.get(str(growth_year), OBR_EARNINGS_GROWTH.get(str(growth_year), 0.02))
+                # Get growth rate from custom values or fall back to OBR
+                obr_rate = OBR_EARNINGS_GROWTH.get(str(growth_year), 0.02)
+                growth_rate = wage_growth.get(str(growth_year), obr_rate)
             adjusted_amount *= (1 + growth_rate)
         
         # Add or increment the income value in the person dict
@@ -174,14 +195,20 @@ def get_income_percentile_impact_data() -> List[Dict[str, Union[float, int]]]:
         List of dictionaries with income percentile and percentage change in net income
     """
     # First, calculate the impact for each household in 2028 and 2029
-    baseline_combined_income = baseline_population_df_2028.household_net_income.values + baseline_population_df_2029.household_net_income.values
-    reform_combined_income = reform_population_df_2028.household_net_income.values + reform_population_df_2029.household_net_income.values
+    baseline_income_2028 = baseline_population_df_2028.household_net_income.values
+    baseline_income_2029 = baseline_population_df_2029.household_net_income.values
+    baseline_combined_income = baseline_income_2028 + baseline_income_2029
+    
+    reform_income_2028 = reform_population_df_2028.household_net_income.values
+    reform_income_2029 = reform_population_df_2029.household_net_income.values
+    reform_combined_income = reform_income_2028 + reform_income_2029
     
     # Calculate the absolute difference in combined income (£)
     absolute_difference = baseline_combined_income - reform_combined_income
     
     # Calculate the percentage change in combined income (as decimal, not %)
-    percentage_change = (baseline_combined_income - reform_combined_income) / baseline_combined_income
+    income_difference = baseline_combined_income - reform_combined_income
+    percentage_change = income_difference / baseline_combined_income
     
     # Handle NaN, Infinity values, and clip at 0
     absolute_difference = pd.Series(absolute_difference).replace([np.inf, -np.inf], np.nan)
@@ -260,30 +287,47 @@ def get_projected_thresholds() -> Tuple[Dict[str, Dict[int, float]], Dict[str, D
     
     # 2025-2027 thresholds are the same in both scenarios (already frozen)
     for year in range(2025, 2028):
-        baseline_thresholds["personal_allowance"][year] = CURRENT_PARAMETERS["personal_allowance"]
-        baseline_thresholds["basic_rate_limit"][year] = CURRENT_PARAMETERS["basic_rate_limit"]
-        baseline_thresholds["higher_rate_threshold"][year] = CURRENT_PARAMETERS["higher_rate_threshold"]
+        # Get the current parameters for easy reference
+        pa = CURRENT_PARAMETERS["personal_allowance"]
+        brl = CURRENT_PARAMETERS["basic_rate_limit"]
+        hrt = CURRENT_PARAMETERS["higher_rate_threshold"]
         
-        reform_thresholds["personal_allowance"][year] = CURRENT_PARAMETERS["personal_allowance"]
-        reform_thresholds["basic_rate_limit"][year] = CURRENT_PARAMETERS["basic_rate_limit"]
-        reform_thresholds["higher_rate_threshold"][year] = CURRENT_PARAMETERS["higher_rate_threshold"]
+        # Set baseline thresholds
+        baseline_thresholds["personal_allowance"][year] = pa
+        baseline_thresholds["basic_rate_limit"][year] = brl
+        baseline_thresholds["higher_rate_threshold"][year] = hrt
+        
+        # Set reform thresholds (same in these years)
+        reform_thresholds["personal_allowance"][year] = pa
+        reform_thresholds["basic_rate_limit"][year] = brl
+        reform_thresholds["higher_rate_threshold"][year] = hrt
     
     # 2028 - baseline would be uprated, reform would be frozen
-    baseline_thresholds["personal_allowance"][2028] = int(CURRENT_PARAMETERS["personal_allowance"] * cpi_uplift_2028)
-    baseline_thresholds["basic_rate_limit"][2028] = int(CURRENT_PARAMETERS["basic_rate_limit"] * cpi_uplift_2028)
-    baseline_thresholds["higher_rate_threshold"][2028] = int(CURRENT_PARAMETERS["higher_rate_threshold"] * cpi_uplift_2028)
+    pa = CURRENT_PARAMETERS["personal_allowance"]
+    brl = CURRENT_PARAMETERS["basic_rate_limit"]
+    hrt = CURRENT_PARAMETERS["higher_rate_threshold"]
     
-    reform_thresholds["personal_allowance"][2028] = CURRENT_PARAMETERS["personal_allowance"]
-    reform_thresholds["basic_rate_limit"][2028] = CURRENT_PARAMETERS["basic_rate_limit"]
-    reform_thresholds["higher_rate_threshold"][2028] = CURRENT_PARAMETERS["higher_rate_threshold"]
+    # Baseline with CPI uprating
+    baseline_thresholds["personal_allowance"][2028] = int(pa * cpi_uplift_2028)
+    baseline_thresholds["basic_rate_limit"][2028] = int(brl * cpi_uplift_2028)
+    baseline_thresholds["higher_rate_threshold"][2028] = int(hrt * cpi_uplift_2028)
+    
+    # Reform with frozen thresholds
+    reform_thresholds["personal_allowance"][2028] = pa
+    reform_thresholds["basic_rate_limit"][2028] = brl
+    reform_thresholds["higher_rate_threshold"][2028] = hrt
     
     # 2029 - baseline would be uprated twice, reform would be frozen
-    baseline_thresholds["personal_allowance"][2029] = int(CURRENT_PARAMETERS["personal_allowance"] * cpi_uplift_2028 * cpi_uplift_2029)
-    baseline_thresholds["basic_rate_limit"][2029] = int(CURRENT_PARAMETERS["basic_rate_limit"] * cpi_uplift_2028 * cpi_uplift_2029)
-    baseline_thresholds["higher_rate_threshold"][2029] = int(CURRENT_PARAMETERS["higher_rate_threshold"] * cpi_uplift_2028 * cpi_uplift_2029)
+    compound_uplift = cpi_uplift_2028 * cpi_uplift_2029
     
-    reform_thresholds["personal_allowance"][2029] = CURRENT_PARAMETERS["personal_allowance"]
-    reform_thresholds["basic_rate_limit"][2029] = CURRENT_PARAMETERS["basic_rate_limit"]
-    reform_thresholds["higher_rate_threshold"][2029] = CURRENT_PARAMETERS["higher_rate_threshold"]
+    # Baseline with compound CPI uprating
+    baseline_thresholds["personal_allowance"][2029] = int(pa * compound_uplift)
+    baseline_thresholds["basic_rate_limit"][2029] = int(brl * compound_uplift)
+    baseline_thresholds["higher_rate_threshold"][2029] = int(hrt * compound_uplift)
+    
+    # Reform with frozen thresholds
+    reform_thresholds["personal_allowance"][2029] = pa
+    reform_thresholds["basic_rate_limit"][2029] = brl
+    reform_thresholds["higher_rate_threshold"][2029] = hrt
     
     return baseline_thresholds, reform_thresholds
