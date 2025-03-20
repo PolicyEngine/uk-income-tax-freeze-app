@@ -1,57 +1,40 @@
 import pytest
-from app.api.calculator import calculate_over_years
+from app.api.calculator import calculate_impact_over_years
 
 
-def test_calculate_over_years_with_freeze():
+def test_calculate_impact_over_years():
     """
-    Test that calculation with freeze returns expected results.
+    Test that calculation returns expected results for both freeze scenarios.
     """
-    income = 50000
-    results = calculate_over_years(income, freeze_thresholds=True)
+    # Create a simple income list with employment income
+    incomes = [{"amount": 50000, "type": "employment_income"}]
+    wage_growth = {}  # Use default OBR projections
     
-    # Basic checks
-    assert len(results) == 8  # 2022-2029
-    assert 2022 in results
-    assert 2029 in results
+    # Call the function that's being tested
+    results = calculate_impact_over_years(incomes, wage_growth)
     
-    # Income should be positive
-    for year, net_income in results.items():
-        assert net_income > 0
+    # Check that we have both scenarios
+    assert "with_freeze" in results
+    assert "without_freeze" in results
+    
+    # Check we have results for years 2025-2029
+    with_freeze = results["with_freeze"]
+    without_freeze = results["without_freeze"]
+    
+    for year in range(2025, 2030):
+        assert year in with_freeze
+        assert year in without_freeze
         
-    # Income should decrease or stay the same over years with frozen thresholds
-    # (as inflation pushes more income into higher tax bands)
-    for year in range(2023, 2030):
-        assert results[year] <= results[year-1]
-
-
-def test_calculate_over_years_without_freeze():
-    """
-    Test that calculation without freeze returns expected results.
-    """
-    income = 50000
-    results = calculate_over_years(income, freeze_thresholds=False)
+        # Income should be positive
+        assert with_freeze[year] > 0
+        assert without_freeze[year] > 0
     
-    # Basic checks
-    assert len(results) == 8  # 2022-2029
-    assert 2022 in results
-    assert 2029 in results
+    # Frozen thresholds should result in less net income in 2028 and 2029
+    # (years where the freeze is extended but not in baseline)
+    for year in [2028, 2029]:
+        assert with_freeze[year] < without_freeze[year]
     
-    # Income should be positive
-    for year, net_income in results.items():
-        assert net_income > 0
-
-
-def test_with_freeze_less_favorable_than_without():
-    """
-    Test that take-home pay with frozen thresholds is less than with inflation-adjusted thresholds.
-    """
-    income = 50000
-    with_freeze = calculate_over_years(income, freeze_thresholds=True)
-    without_freeze = calculate_over_years(income, freeze_thresholds=False)
-    
-    # First year should be identical
-    assert with_freeze[2022] == without_freeze[2022]
-    
-    # Subsequent years should show impact of freeze
-    for year in range(2023, 2030):
-        assert with_freeze[year] <= without_freeze[year]
+    # Years 2025-2027 should be identical in both scenarios
+    # (freeze already exists in both scenarios)
+    for year in range(2025, 2028):
+        assert with_freeze[year] == without_freeze[year]
