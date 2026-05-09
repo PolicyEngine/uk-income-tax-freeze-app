@@ -3,9 +3,11 @@ const nextConfig = {
   reactStrictMode: true,
   output: 'export',  // Enable static HTML export
   distDir: 'out',    // Output directory
-  
-  // We need to disable rewrites in production with static export
-  // The API calls will be handled by the FastAPI backend serving the static files
+  // Pin the workspace root so Turbopack does not pick up a stray lockfile from
+  // a parent directory.
+  turbopack: {
+    root: process.cwd(),
+  },
 };
 
 module.exports = nextConfig;
