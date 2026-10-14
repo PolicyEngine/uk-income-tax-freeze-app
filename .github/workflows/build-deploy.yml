@@ -29,7 +29,8 @@ jobs:
           source .venv/bin/activate
           uv pip install -e ".[dev]"
           
-      # The tests read the gated enhanced FRS. The job's GitHub OIDC token is
+      # The app reads the gated enhanced FRS, and the tests get a token in
+      # case they do too. The job's GitHub OIDC token is
       # exchanged for a one-hour, read-only token from policyengine-auto's
       # Hugging Face CI/CD identity, so no Hugging Face secret is stored
       # (https://huggingface.co/docs/hub/trusted-publishers). A fork pull
