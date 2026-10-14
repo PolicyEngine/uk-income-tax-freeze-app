@@ -29,13 +29,19 @@ jobs:
           source .venv/bin/activate
           uv pip install -e ".[dev]"
           
+      # The tests read the gated enhanced FRS. The job's GitHub OIDC token is
+      # exchanged for a one-hour, read-only token from policyengine-auto's
+      # Hugging Face CI/CD identity, so no Hugging Face secret is stored
+      # (https://huggingface.co/docs/hub/trusted-publishers). A fork pull
+      # request has no OIDC token and runs the tests without one.
       - name: Run tests
         env:
-          HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+          HF_OIDC_RESOURCE: policyengine-auto
+          HF_OIDC_OPTIONAL: "1"
         run: |
           cd backend
           source .venv/bin/activate
-          pytest
+          ../.github/with-hf-token.sh pytest
         
       - name: Lint
         run: |
@@ -104,13 +110,32 @@ jobs:
           cd terraform
           terraform init
         
+      # The service reads the gated enhanced FRS at runtime, so it needs a
+      # stored, read-only token for
+      # policyengine/policyengine-uk-data-private, kept in the repository
+      # secret HF_RUNTIME_READ_TOKEN: never the org-wide HUGGING_FACE_TOKEN,
+      # and never a one-hour OIDC token. Terraform reads it from
+      # TF_VAR_hugging_face_token rather than the command line.
+      - name: Check the runtime data token
+        env:
+          TF_VAR_hugging_face_token: ${{ secrets.HF_RUNTIME_READ_TOKEN }}
+        run: |
+          if [ -z "$TF_VAR_hugging_face_token" ]; then
+            echo "::error::Set the repository secret HF_RUNTIME_READ_TOKEN to a read-only token for policyengine/policyengine-uk-data-private; deploying without it would leave the service unable to read its data."
+            exit 1
+          fi
+
       - name: Terraform Plan
+        env:
+          TF_VAR_hugging_face_token: ${{ secrets.HF_RUNTIME_READ_TOKEN }}
         run: |
           cd terraform
-          terraform plan -var="project_id=${{ secrets.GCP_PROJECT_ID }}" -var="container_tag=${{ github.sha }}" -var="hugging_face_token=${{ secrets.HUGGING_FACE_TOKEN }}"
-        
+          terraform plan -var="project_id=${{ secrets.GCP_PROJECT_ID }}" -var="container_tag=${{ github.sha }}"
+
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main'
+        env:
+          TF_VAR_hugging_face_token: ${{ secrets.HF_RUNTIME_READ_TOKEN }}
         run: |
           cd terraform
-          terraform apply -auto-approve -var="project_id=${{ secrets.GCP_PROJECT_ID }}" -var="container_tag=${{ github.sha }}" -var="hugging_face_token=${{ secrets.HUGGING_FACE_TOKEN }}"
+          terraform apply -auto-approve -var="project_id=${{ secrets.GCP_PROJECT_ID }}" -var="container_tag=${{ github.sha }}"
